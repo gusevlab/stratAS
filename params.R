@@ -44,7 +44,7 @@ if ( !is.na(opt$inp_cnv) ) {
 			num[c] = sum(overlap)
 		}
 	}
-	write.table( cbind(cnv[,c("CHR","P0","P1")],format(cbind(phi,mu),digits=3),num) , quote=F, row.names=F, col.names=F , sep='\t' , file=paste(opt$out,".local.params",sep=''))
+	write.table( cbind(cnv[,c("CHR","P0","P1")],format(cbind(phi,mu),digits=3),num) , quote=F, row.names=F, col.names=c("CHR","P0","P1","PHI","MU","N"), sep='\t' , file=paste(opt$out,".local.params",sep=''))
 }
 
 # fit all counts
@@ -52,4 +52,5 @@ fit = vglm(cbind( al.ref , al.alt ) ~ 1, betabinomialff, trace = FALSE)
 cof = Coef(fit)
 phi = 1/(1+sum(cof))
 mu = cof[1] / sum(cof)
-cat( phi , mu , '\n' , sep='\t' , file=paste(opt$out,".global.params",sep='') )
+num = length( al.ref )
+write.table( c(phi , mu, num) , quote=F , row.names=F , sep='\t' , col.names=c("PHI","MU","N") , file=paste(opt$out,".global.params",sep='') )

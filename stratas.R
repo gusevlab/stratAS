@@ -1,7 +1,48 @@
 library('VGAM')
 
-args = commandArgs(trailingOnly=T)
-f.mat = args[1]
+library("optparse")
+
+option_list = list(
+	make_option("--input", action="store", default=NA, type='character',
+              help="Path to input file [required]"),
+	make_option("--samples", action="store", default=NA, type='character',
+              help="Path to sample identifier file, must have ID and CONDITION columns [required]"),	
+	make_option("--peaks", action="store", default=NA, type='character',
+              help="Path to file containing peak/gene boundaries, must contain CHR P0 P1 NAME CENTER columns [required]"),	
+	make_option("--global_param", action="store", default=NA, type='character',
+              help="Path to global parameter file [required]"),
+	make_option("--local_param", action="store", default=NA, type='character',
+              help="Path to local parameter file [required]"),
+	make_option("--out", action="store", default=NA, type='character',
+              help="Path to output [required]"),
+	make_option("--window", action="store", default=100e3 , type='integer',
+              help="Window (in bp) for SNPs to test around the peak boundary. [default: %default]")	
+	make_option("--perm", action="store", default=0 , type='integer',
+              help="# of permutations to perm (0=off). [default: %default]")
+	make_option("--min_maf", action="store", default=0.01 , type='double',
+              help="Minimum minor allele frequency for test SNP. [default: %default]")
+	make_option("--min_het", action="store", default=0.01 , type='double',
+              help="Minimum minor heterozygous frequency for test SNP. [default: %default]")
+	make_option("--max_rho", action="store", default=0.10 , type='double',
+              help="Maximum local/global over-dispersion parameter for which to include individual in test. [default: %default]")
+	make_option("--binom", action="store_true", default=FALSE,
+              help="Also perform a standard binomial test. [default: %default]")	
+)
+opt = parse_args(OptionParser(option_list=option_list))
+
+peaks = read.table( opt$peaks , head=T , as.is=T)
+mat = read.table( opt$input , as.is=T )
+phe = read.table( opt$samples , head=T , as.is=T)
+cnv.all = read.table( opt$global_param , head=T ,as.is=T)
+cnv.local = read.table( opt$local_param , head=T ,as.is=T)
+
+PAR.WIN = opt$window
+NUM.PERM = opt$perm
+MIN.MAF = opt$min_maf
+MIN.HET = opt$min_het
+MAX.RHO = opt$max_rho
+DO.BINOM = opt$binom
+PERM.PVTHRESH = 0.05 / nrow(mat)
 
 bb.loglike = function( mu , ref , alt, rho ) {
         keep = !is.na(ref + alt) & ref + alt > 0
@@ -18,36 +59,13 @@ bbinom.test = function( ref , alt , rho ) {
 	}
 	return( opt )
 }
-					
-peaks = read.table("gencode.protein_coding.transcripts.bed",as.is=T)
-mat = read.table(f.mat,as.is=T)
-phe = read.table("WASP/ASVCF/KIRC.ALL.AS.PHE",as.is=T)
-map = read.table(paste(f.mat,".HIGHMAP.bed",sep=''),as.is=T)
-
-m = match( paste(mat[,1],mat[,2]) , paste(map[,1],map[,3]) )
-highmap = !is.na(m)
-cat( mean(highmap) , "high mappability sites\n" , file=stderr() )
-
-cnv.all = read.table("WASP/ASVCF/KIRC.ALL.AS.CNV",as.is=T)
-cnv.local = read.table("WASP/ASVCF/KIRC.ALL.AS.CNVLOCAL",as.is=T)
-#cnv.starts = c(1,cumsum(rle(tbl[,1])$len))
-#cnv.starts = cnv.ctr[-length(cnv.ctr)]
-cnv.local[,2] = paste("chr",cnv.local[,2],sep='')
 
 cur.chr = unique(mat[,1])
-m = match(peaks[,1] , cur.chr )
+m = match(peaks$CHR , cur.chr )
 peaks = peaks[!is.na(m),]
 
-m = match(cnv.local[,2] , cur.chr )
+m = match(cnv.local$CHR , cur.chr )
 cnv.local = cnv.local[!is.na(m),]
-
-PAR.WIN = 100e3
-NUM.PERM = 0
-MIN.MAF = 0.01
-MIN.HET = 0.01
-MAX.RHO = 0.10
-DO.BINOM = FALSE
-PERM.PVTHRESH = 0.05 / nrow(mat)
 
 N = (ncol(mat) - 5)/4
 M = nrow(mat)
@@ -56,10 +74,10 @@ HAPS = list()
 GENO.H1 = matrix( 0 , nrow=M , ncol=N )
 GENO.H2 = matrix( 0 , nrow=M , ncol=N )
 
-PHENO = phe[,2]
-m = match( phe[,1] , cnv.all[,1] )
+PHENO = phe$CONDITION
+m = match( phe$ID , cnv.all$ID )
 cnv.all = cnv.all[m,]
-RHO.ALL = cnv.all[,2]
+RHO.ALL = cnv.all$PHI
 
 for ( h in 1:2 ) {
 	HAPS[[h]] = matrix( 0 , nrow=M , ncol=N )
@@ -81,11 +99,11 @@ for ( i in 1:N ) {
 options( digits = 2 )
 
 for ( p in 1:nrow(peaks) ) {
-	cur = mat[,1] == peaks[p,1] & mat[,2] >= peaks[p,2] & mat[,2] <= peaks[p,3] & highmap
-	cur.cnv = cnv.local[ cnv.local[,2] == peaks[p,1] & cnv.local[,3] < peaks[p,2] & cnv.local[,4] > peaks[p,3] , ]
-	m = match( phe[,1] , cur.cnv[,1] )
+	cur = mat[,1] == peaks$CHR[p] & mat[,2] >= peaks$P0[p] & mat[,2] <= peaks$P1[p]
+	cur.cnv = cnv.local[ cnv.local$CHR == peaks$CHR[p] & cnv.local$P0 < peaks$P0[p] & cnv.local$P1 > peaks$P1[p] , ]
+	m = match( phe$ID , cur.cnv$ID )
 	cur.cnv = cur.cnv[m,]
-	RHO = cur.cnv[,5]
+	RHO = cur.cnv$PHI
 	RHO[ RHO > MAX.RHO ] = NA
 	
 	# collapse reads at this peak
@@ -107,7 +125,7 @@ for ( p in 1:nrow(peaks) ) {
 	if ( length(unique(cur.i)) > MIN.MAF*N && sum(cur.h1) + sum(cur.h2) > 0 ) {
 		cat( p , p / nrow(peaks) , unlist(peaks[p,]) , '\n' , file=stderr() )
 		# test all nearby SNPs
-		cur.snp = mat[,1] == peaks[p,1] & mat[,2] >= peaks[p,5] - PAR.WIN & mat[,2] <= peaks[p,5] + PAR.WIN
+		cur.snp = mat[,1] == peaks$CHR[p] & mat[,2] >= peaks$CENTER[p] - PAR.WIN & mat[,2] <= peaks$CENTER[p] + PAR.WIN
 		for ( s in which(cur.snp) ) {
 			# restrict to hets
 			HET = GENO.H1[s,] != GENO.H2[s,] & !is.na(RHO)
@@ -156,9 +174,9 @@ for ( p in 1:nrow(peaks) ) {
 							# --- perform fisher's exact test between conditions					
 							tst.fisher = fisher.test( cbind( c(sum(CUR.REF.C0),sum(CUR.ALT.C0)) , c(sum(CUR.REF.C1),sum(CUR.ALT.C1)) ) )
 							
-							cat( unlist(mat[s,1:3]) , unlist(peaks[p,-1]) , sum(HET) , sum(CUR.REF) + sum(CUR.ALT) , tst.binom$est , tst.binom$p.value , tst.bbinom.BOTH$min , tst.bbinom.BOTH$pv , tst.fisher$est , tst.binom.C0$p.value , tst.bbinom.C0$pv , tst.binom.C1$p.value , tst.bbinom.C1$pv , tst.fisher$p.value , pv.BOTH , '\n' , sep='\t' )
+							cat( unlist(mat[s,1:3]) , unlist(peaks[p,c("P0","P1","NAME","CENTER")]) , sum(HET) , sum(CUR.REF) + sum(CUR.ALT) , tst.binom$est , tst.binom$p.value , tst.bbinom.BOTH$min , tst.bbinom.BOTH$pv , tst.fisher$est , tst.binom.C0$p.value , tst.bbinom.C0$pv , tst.binom.C1$p.value , tst.bbinom.C1$pv , tst.fisher$p.value , pv.BOTH , '\n' , sep='\t' )
 						} else {
-							cat( unlist(mat[s,1:3]) , unlist(peaks[p,-1]) , sum(HET) , sum(CUR.REF) + sum(CUR.ALT) , tst.bbinom.C0$min , tst.bbinom.C0$pv , tst.bbinom.C1$min , tst.bbinom.C1$pv , pv.BOTH , '\n' , sep='\t' )
+							cat( unlist(mat[s,1:3]) , unlist(peaks[p,c("P0","P1","NAME","CENTER")]) , sum(HET) , sum(CUR.REF) + sum(CUR.ALT) , tst.bbinom.C0$min , tst.bbinom.C0$pv , tst.bbinom.C1$min , tst.bbinom.C1$pv , pv.BOTH , '\n' , sep='\t' )
 						}
 						
 						#cat( perm , p , s , sum(HET) , sum(CUR.REF) + sum(CUR.ALT) , unlist(mat[s,1:3]) , unlist(peaks[p,-1]) , tst.binom$est , tst.binom$p.value , tst.bbinom.BOTH$min , tst.bbinom.BOTH$pv , tst.fisher$est , tst.binom.C0$p.value , tst.bbinom.C0$pv , tst.binom.C1$p.value , tst.bbinom.C1$pv , tst.fisher$p.value , pv.BOTH , '\n' , sep='\t' )

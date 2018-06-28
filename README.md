@@ -12,12 +12,14 @@ Allele specific analyses across cell states and conditions
 
 ### Pre-processing and allelic counts
 
+For QC, we recommend analyzing all sequence data with the [WASP](https://github.com/bmvdgeijn/WASP) mapping pipeline. For allelic quantification, we recommend using the GATK ASEReadCounter.
+
 ### Estimating prior parameters with `params.R`
 
-Run on each full vcf to get global and local distributional parameters.
+`params.R` infers the read count distribution (beta binomial) parameters and needs to be run on a whole genome vcf one individual at a time. For tumor data, local CNV-specific parameters are also estimated.
 
 ### Analysis with `stratas.R`
 
-Run on combined vcf to get AS statistics.
+`stratas.R` computes the actual AS statistics from a VCF of all individuals and the prior parameters estimated above.
 
 ### Output data

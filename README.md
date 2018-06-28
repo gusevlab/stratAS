@@ -18,7 +18,7 @@ For QC, we recommend analyzing all sequence data with the [WASP](https://github.
 
 `params.R` infers the read count distribution (beta binomial) parameters and needs to be run on a whole genome vcf one individual at a time. The input is an `--inp_counts` file which must contain the headers `CHR POS HAP REF.READS ALT.READS` where `HAP` is the `0|1` or `1|0` vcf haplotype code.
 
-A vcf file is converted to counts as follows:
+A vcf file containing one individual is converted to counts as follows:
 ```
 zcat $VCF \
 | grep -v '#' \
@@ -39,10 +39,55 @@ inference is then performed by running:
 Rscript params.R --min_reads 5 --inp_counts $OUT.counts --inp_cnv $CNV --out $OUT
 ```
 
-A `$OUT.global.params` file is generated containing the parameters and (optionally) an `$OUT.local.params` file is generated containing the positions and parameters for each CNV.
+A `$OUT.global.params` file is generated containing the parameters (with header `PHI MU N`) and (optionally) an `$OUT.local.params` file is generated containing the positions and parameters for each CNV (with header `CHR P0 P1 PHI MU N`).
 
 ### Analysis with `stratas.R`
 
 `stratas.R` computes the actual AS statistics from a VCF of all individuals and the prior parameters estimated above.
 
+A vcf file containing all individuals is converted to counts and split into batches as follows:
+```
+zcat $VCF\
+| grep -v '#' \
+| cut -f 1-5,9- \
+| tr ':' '\t' \
+| awk '{ for(i=1;i<=5;i++) { printf "%s ",$i; } for(i=6;i<=10;i++) { if($i == "GT") gtnum=i-6; if($i=="AS") asnum=i-6; } for(i=11;i<=NF;i++) { if( (i-11) % 5 == asnum || (i-11) % 5 == gtnum ) printf " %s",$i; } print ""; }' \
+| sed 's/[|,]/ /g' | split -d -l 15000 - $OUT.MAT.split.
+```
+
+Each batch is then processed as follows:
+```
+Rscript stratas.R \
+--input $OUT.MAT.split.00 \
+--samples SAMPLES.ID \
+--peaks gencode.protein_coding.transcripts.bed \
+--global_param GLOBAL.params \
+--local_param LOCAL.params \
+```
+
 ### Output data
+
+The ASE test is printed to screen with each line containing the following entries:
+
+| Column | Description |
+| --- | --- |
+| CHR | Chromosome |
+| POS | Position of test SNP |
+| RSID | ID of test SNP |
+| P0 | Start of gene/peak  |
+| P1 | End of gene/peak |
+| NAME | Name of gene/peak |
+| CENTER | Center position of peak (or TSS for gene) |
+| N.HET | # of heterozygous individuals tested |
+| N.READS | # of reads tested in total |
+| BINOM.EST | Allelic fraction estimate from standard binomial test across both conditions |
+| BINOM.P | Binomial test for imbalance across both conditions  |
+| BBINOM.EST | Allelic fraction estimate from beta binomial test across both conditions |
+| BBINOM.P | Beta-binomial test for imbalance across both conditions  |
+| FISHER.EST | Fisher's test odd's ratio for difference between conditions |
+| BINOM.C0.P | Binomial test for imbalance in condition 0 |
+| BBINOM.C0.P | Beta-binomial test for imbalance in condition 0 |
+| BINOM.C1.P | Binomial test for imbalance in condition 1  |
+| BBINOM.C1.P | Beta-binomial test for imbalance in condition 1 |
+| FISHER.DIFF.P | Fisher's test difference between conditions |
+| BBINOM.DIFF.P | Beta-binomial test for difference between conditions |

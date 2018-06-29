@@ -109,3 +109,11 @@ Rscript stratas.R \
 --local_param=example/KIRC.ALL.AS.CNVLOCAL \
 < stratas.R
 ```
+
+## Work in progress
+
+* Permutation: The permutation test permutes read counts with respect to alleles. This is a null of counts randomly sampled from the observed count distribution. If a small number of individuals have unusually high read counts and imbalance they will dominate the observed imbalance and appear highly significant even in permutation. In these cases, failing the permutation test may rule out true biological signal due to individual outliers.
+
+* Unlike an eQTL, we can test for AS signal within each individual separately but this is currently not being evaluated. It may be interesting to know what fraction of individual heterozygotes exhibit significant imbalance (for example, through the Storey & Tibshirani pi statistic). Alternatively, individual standard errors can be approximated from each individual test and heterogeneity assessed using standard meta-analysis statistics.
+
+* For a test SNP that is not in the target feature, it may be of interest to report the allelic imbalance for homozygous individuals (that have heterozygous read-carrying variants). If the test SNP explains all of the imbalance at the locus we would expect these homozygous individuals to follow the null. This could also be a way to identify secondary associations.

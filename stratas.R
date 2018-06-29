@@ -18,6 +18,8 @@ option_list = list(
               help="Window (in bp) for SNPs to test around the peak boundary. [default: %default]"),
 	make_option("--perm", action="store", default=0 , type='integer',
               help="# of permutations to perm (0=off). [default: %default]"),
+	make_option("--min_cov", action="store", default=5 , type='integer',
+              help="Individuals must have at least this many reads (for both alleles) to be tested. [default: %default]"),
 	make_option("--min_maf", action="store", default=0.01 , type='double',
               help="Minimum minor allele frequency for test SNP. [default: %default]"),
 	make_option("--min_het", action="store", default=0.01 , type='double',
@@ -39,6 +41,7 @@ PAR.WIN = opt$window
 NUM.PERM = opt$perm
 MIN.MAF = opt$min_maf
 MIN.HET = opt$min_het
+MIN.COV = opt$min_cov
 MAX.RHO = opt$max_rho
 DO.BINOM = opt$binom
 PERM.PVTHRESH = 0.05 / nrow(mat)
@@ -114,7 +117,7 @@ for ( p in 1:nrow(peaks) ) {
 	cur[ cur ] = !snps.overlap
 	
 	for ( i in 1:N ) {
-		reads.keep = GENO.H1[cur,i] != GENO.H2[cur,i] & HAPS[[1]][cur,i] >= 5 & HAPS[[2]][cur,i] >= 5
+		reads.keep = GENO.H1[cur,i] != GENO.H2[cur,i] & HAPS[[1]][cur,i] >= MIN.COV & HAPS[[2]][cur,i] >= MIN.COV
 		cur.h1 = c( cur.h1 , (HAPS[[1]][cur,i])[reads.keep] )
 		cur.h2 = c( cur.h2 , (HAPS[[2]][cur,i])[reads.keep] )
 		cur.i = c( cur.i , rep( i , sum(reads.keep)) )
@@ -176,9 +179,6 @@ for ( p in 1:nrow(peaks) ) {
 						} else {
 							cat( unlist(mat[s,1:3]) , unlist(peaks[p,c("P0","P1","NAME","CENTER")]) , sum(HET) , sum(CUR.REF) + sum(CUR.ALT) , tst.bbinom.C0$min , tst.bbinom.C0$pv , tst.bbinom.C1$min , tst.bbinom.C1$pv , pv.BOTH , '\n' , sep='\t' )
 						}
-						
-						#cat( perm , p , s , sum(HET) , sum(CUR.REF) + sum(CUR.ALT) , unlist(mat[s,1:3]) , unlist(peaks[p,-1]) , tst.binom$est , tst.binom$p.value , tst.bbinom.BOTH$min , tst.bbinom.BOTH$pv , tst.fisher$est , tst.binom.C0$p.value , tst.bbinom.C0$pv , tst.binom.C1$p.value , tst.bbinom.C1$pv , tst.fisher$p.value , pv.BOTH , '\n' , sep='\t' )
-						# if ( perm == 0 && min( tst.binom$p.value , tst.bbinom.BOTH$pv , tst.fisher$p.value , tst.bbinom.C0$pv , tst.bbinom.C1$pv , pv.BOTH , na.rm=T) > PERM.PVTHRESH ) break()
 					}
 				}
 			}

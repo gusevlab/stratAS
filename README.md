@@ -1,4 +1,4 @@
-# stratAS :first_quarter_moon:
+# :first_quarter_moon: stratAS
 
 Allele specific analyses across cell states and conditions
 
@@ -10,11 +10,13 @@ Allele specific analyses across cell states and conditions
 * (Optional, for tumors) A list of structural variant boundaries for which to estimate local distribution parameters.
 * R, and the `VGAM`, `optparse` libraries installed.
 
-### Pre-processing and allelic counts
+### Recommended pre-processing and allelic counts
 
-For QC, we recommend analyzing all sequence data with the [WASP](https://github.com/bmvdgeijn/WASP) mapping pipeline. For allelic quantification, we recommend using the GATK ASEReadCounter.
+* Phase your genotype data with EAGLE/HRC.
+* Process all sequence data with the [WASP](https://github.com/bmvdgeijn/WASP) mapping pipeline.
+* Use the GATK ASEReadCounter to count reads then convert into vcf (see `pipeline/` scripts).
 
-### Estimating prior parameters with `params.R`
+### `params.R` : estimating prior parameters
 
 `params.R` infers the read count distribution (beta binomial) parameters and needs to be run on a whole genome vcf one individual at a time. The input is an `--inp_counts` file which must contain the headers `CHR POS HAP REF.READS ALT.READS` where `HAP` is the `0|1` or `1|0` vcf haplotype code.
 
@@ -41,9 +43,9 @@ Rscript params.R --min_reads 5 --inp_counts $OUT.counts --inp_cnv $CNV --out $OU
 
 A `$OUT.global.params` file is generated containing the parameters (with header `PHI MU N`) and (optionally) an `$OUT.local.params` file is generated containing the positions and parameters for each CNV (with header `CHR P0 P1 PHI MU N`).
 
-### Analysis with `stratas.R`
+### `stratas.R` : testing for differential AS
 
-`stratas.R` computes the actual AS statistics from a VCF of all individuals and the prior parameters estimated above.
+`stratas.R` computes the AS statistics from a VCF of all individuals and the prior parameters estimated above.
 
 A vcf file containing all individuals is converted to counts and split into batches as follows:
 ```
@@ -91,6 +93,8 @@ The ASE test is printed to screen with each line containing the following entrie
 | BBINOM.C1.P | Beta-binomial test for imbalance in condition 1 |
 | FISHER.DIFF.P | Fisher's test difference between conditions [*] |
 | BBINOM.DIFF.P | Beta-binomial test for difference between conditions |
+
+*\* these fields are only reported if `--binom` is set* 
 
 ## Example
 

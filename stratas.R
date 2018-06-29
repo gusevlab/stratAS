@@ -1,5 +1,4 @@
 library('VGAM')
-
 library("optparse")
 
 option_list = list(
@@ -16,17 +15,17 @@ option_list = list(
 	make_option("--out", action="store", default=NA, type='character',
               help="Path to output [required]"),
 	make_option("--window", action="store", default=100e3 , type='integer',
-              help="Window (in bp) for SNPs to test around the peak boundary. [default: %default]")	
+              help="Window (in bp) for SNPs to test around the peak boundary. [default: %default]"),
 	make_option("--perm", action="store", default=0 , type='integer',
-              help="# of permutations to perm (0=off). [default: %default]")
+              help="# of permutations to perm (0=off). [default: %default]"),
 	make_option("--min_maf", action="store", default=0.01 , type='double',
-              help="Minimum minor allele frequency for test SNP. [default: %default]")
+              help="Minimum minor allele frequency for test SNP. [default: %default]"),
 	make_option("--min_het", action="store", default=0.01 , type='double',
-              help="Minimum minor heterozygous frequency for test SNP. [default: %default]")
+              help="Minimum minor heterozygous frequency for test SNP. [default: %default]"),
 	make_option("--max_rho", action="store", default=0.10 , type='double',
-              help="Maximum local/global over-dispersion parameter for which to include individual in test. [default: %default]")
+              help="Maximum local/global over-dispersion parameter for which to include individual in test. [default: %default]"),
 	make_option("--binom", action="store_true", default=FALSE,
-              help="Also perform a standard binomial test. [default: %default]")	
+              help="Also perform a standard binomial test. [default: %default]")
 )
 opt = parse_args(OptionParser(option_list=option_list))
 
@@ -88,7 +87,6 @@ for ( i in 1:N ) {
 	GENO.H1[,i] = mat[ , 6 + 4*(i-1) ]
 	GENO.H2[,i] = mat[ , 6 + 4*(i-1) + 1 ]
 	HET = GENO.H1[,i] != GENO.H2[,i]
-
 	cur.ALT = mat[ , 6 + 4*(i-1) ] == 0
 	HAPS[[1]][HET & cur.ALT,i] = mat[ HET & cur.ALT , 6 + 4*(i-1) + 2 ]
 	HAPS[[1]][HET & !cur.ALT,i] = mat[ HET & !cur.ALT , 6 + 4*(i-1) + 3 ]

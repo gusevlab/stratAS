@@ -80,14 +80,28 @@ The ASE test is printed to screen with each line containing the following entrie
 | CENTER | Center position of peak (or TSS for gene) |
 | N.HET | # of heterozygous individuals tested |
 | N.READS | # of reads tested in total |
-| BINOM.EST | Allelic fraction estimate from standard binomial test across both conditions |
-| BINOM.P | Binomial test for imbalance across both conditions  |
+| BINOM.EST | Allelic fraction estimate from standard binomial test across both conditions [*] |
+| BINOM.P | Binomial test for imbalance across both conditions [*] |
 | BBINOM.EST | Allelic fraction estimate from beta binomial test across both conditions |
 | BBINOM.P | Beta-binomial test for imbalance across both conditions  |
-| FISHER.EST | Fisher's test odd's ratio for difference between conditions |
-| BINOM.C0.P | Binomial test for imbalance in condition 0 |
+| FISHER.EST | Fisher's test odd's ratio for difference between conditions [*] |
+| BINOM.C0.P | Binomial test for imbalance in condition 0 [*] |
 | BBINOM.C0.P | Beta-binomial test for imbalance in condition 0 |
-| BINOM.C1.P | Binomial test for imbalance in condition 1  |
+| BINOM.C1.P | Binomial test for imbalance in condition 1 [*] |
 | BBINOM.C1.P | Beta-binomial test for imbalance in condition 1 |
-| FISHER.DIFF.P | Fisher's test difference between conditions |
+| FISHER.DIFF.P | Fisher's test difference between conditions [*] |
 | BBINOM.DIFF.P | Beta-binomial test for difference between conditions |
+
+## Example
+
+An example locus with significant AS associations can be run by calling:
+
+```
+Rscript stratas.R \
+--input example/ENSG00000075240.12.mat \
+--samples example/KIRC.ALL.AS.PHE \
+--peaks example/ENSG00000075240.12.bed \
+--global_param example/KIRC.ALL.AS.CNV \
+--local_param=example/KIRC.ALL.AS.CNVLOCAL \
+< stratas.R
+```

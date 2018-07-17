@@ -13,9 +13,9 @@ option_list = list(
 )
 opt = parse_args(OptionParser(option_list=option_list))
     
-vcf = read.table( opt$inp_counts , as.is=T )
+vcf = read.table( opt$inp_counts , as.is=T , header = TRUE)
 # filter heterozygous sites with minimum reads
-vcf = vcf[ (vcf$HAP == "1|0" | vcf$HAP = "0|1") & vcf$REF.READS >= opt$min_cov & vcf$ALT.READS >= opt$min_cov ,]
+vcf = vcf[ (vcf$HAP == "1|0" | vcf$HAP == "0|1") & vcf$REF.READS >= opt$min_cov & vcf$ALT.READS >= opt$min_cov ,]
 
 # put in phase
 al.ref = vcf$REF.READS
@@ -25,13 +25,13 @@ tmp = al.ref[switch]
 al.ref[switch] = al.alt[switch]
 al.alt[switch] = tmp
 
-# parameters to be estimated
-phi = rep(NA,nrow(cnv))
-mu = rep(NA,nrow(cnv))
-num = rep(NA,nrow(cnv))
-
 if ( !is.na(opt$inp_cnv) ) {
 	cnv = read.table( opt$inp_cnv , head=F , as.is=T)
+	
+	# local parameters to be estimated
+	phi = rep(NA,nrow(cnv))
+	mu = rep(NA,nrow(cnv))
+	num = rep(NA,nrow(cnv))
 
 	# read through CNVs 
 	for ( c in 1:nrow(cnv) ) {
@@ -53,4 +53,4 @@ cof = Coef(fit)
 phi = 1/(1+sum(cof))
 mu = cof[1] / sum(cof)
 num = length( al.ref )
-write.table( c(phi , mu, num) , quote=F , row.names=F , sep='\t' , col.names=c("PHI","MU","N") , file=paste(opt$out,".global.params",sep='') )
+write.table( cbind(phi , mu, num) , quote=F , row.names=F , sep='\t' , col.names=c("PHI","MU","N") , file=paste(opt$out,".global.params",sep='') )

@@ -38,7 +38,7 @@ For tumor data, local CNV-specific parameters are also estimated, and the `--inp
 
 inference is then performed by running:
 ```
-Rscript params.R --min_reads 5 --inp_counts $OUT.counts --inp_cnv $CNV --out $OUT
+Rscript params.R --min_cov 5 --inp_counts $OUT.counts --inp_cnv $CNV --out $OUT
 ```
 
 A `$OUT.global.params` file is generated containing the parameters (with header `PHI MU N`) and (optionally) an `$OUT.local.params` file is generated containing the positions and parameters for each CNV (with header `CHR P0 P1 PHI MU N`).

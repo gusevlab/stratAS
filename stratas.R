@@ -35,7 +35,12 @@ peaks = read.table( opt$peaks , head=T , as.is=T)
 mat = read.table( opt$input , as.is=T )
 phe = read.table( opt$samples , head=T , as.is=T)
 cnv.all = read.table( opt$global_param , head=T ,as.is=T)
-cnv.local = read.table( opt$local_param , head=T ,as.is=T)
+
+if (! is.na(opt$local_param)) {
+	cnv.local = read.table( opt$local_param , head=T ,as.is=T)
+} else {
+	cnv.local = opt$local_param
+}
 
 PAR.WIN = opt$window
 NUM.PERM = opt$perm
@@ -66,8 +71,10 @@ cur.chr = unique(mat[,1])
 m = match(peaks$CHR , cur.chr )
 peaks = peaks[!is.na(m),]
 
-m = match(cnv.local$CHR , cur.chr )
-cnv.local = cnv.local[!is.na(m),]
+if (! is.na(cnv.local) ) {
+	m = match(cnv.local$CHR , cur.chr )
+	cnv.local = cnv.local[!is.na(m),]
+}
 
 N = (ncol(mat) - 5)/4
 M = nrow(mat)
@@ -101,11 +108,11 @@ options( digits = 2 )
 
 for ( p in 1:nrow(peaks) ) {
 	cur = mat[,1] == peaks$CHR[p] & mat[,2] >= peaks$P0[p] & mat[,2] <= peaks$P1[p]
-	cur.cnv = cnv.local[ cnv.local$CHR == peaks$CHR[p] & cnv.local$P0 < peaks$P0[p] & cnv.local$P1 > peaks$P1[p] , ]
+	cur.cnv = cnv.all[ cnv.all$CHR == peaks$CHR[p] & cnv.all$P0 < peaks$P0[p] & cnv.all$P1 > peaks$P1[p] , ]
 	m = match( phe$ID , cur.cnv$ID )
 	cur.cnv = cur.cnv[m,]
 	RHO = cur.cnv$PHI
-	RHO[ RHO > MAX.RHO ] = NA
+	RHO.ALL[ RHO.ALL > MAX.RHO ] = NA
 	
 	# collapse reads at this peak
 	cur.h1 = vector()
@@ -129,7 +136,7 @@ for ( p in 1:nrow(peaks) ) {
 		cur.snp = mat[,1] == peaks$CHR[p] & mat[,2] >= peaks$CENTER[p] - PAR.WIN & mat[,2] <= peaks$CENTER[p] + PAR.WIN
 		for ( s in which(cur.snp) ) {
 			# restrict to hets
-			HET = GENO.H1[s,] != GENO.H2[s,] & !is.na(RHO)
+			HET = GENO.H1[s,] != GENO.H2[s,] & !is.na(RHO.ALL)
 			if ( sum(HET) > MIN.HET*N ) {
 				# collect REF/ALT heterozygous haplotypes
 				m1 = match( cur.i , which(HET & GENO.H1[s,] == 0) )
@@ -161,9 +168,9 @@ for ( p in 1:nrow(peaks) ) {
 						CUR.IND.C1 = CUR.IND[m]		
 						
 						# --- perform beta-binomial test
-						tst.bbinom.C0 = bbinom.test( CUR.REF.C0 , CUR.ALT.C0 , RHO[CUR.IND.C0] )
-						tst.bbinom.C1 = bbinom.test( CUR.REF.C1 , CUR.ALT.C1 , RHO[CUR.IND.C1] )
-						tst.bbinom.BOTH = bbinom.test( CUR.REF , CUR.ALT , RHO[CUR.IND] )
+						tst.bbinom.C0 = bbinom.test( CUR.REF.C0 , CUR.ALT.C0 , RHO.ALL[CUR.IND.C0] )
+						tst.bbinom.C1 = bbinom.test( CUR.REF.C1 , CUR.ALT.C1 , RHO.ALL[CUR.IND.C1] )
+						tst.bbinom.BOTH = bbinom.test( CUR.REF , CUR.ALT , RHO.ALL[CUR.IND] )
 						lrt.BOTH = 2 * (tst.bbinom.C0$objective + tst.bbinom.C1$objective - tst.bbinom.BOTH$objective)
 						pv.BOTH = pchisq( abs(lrt.BOTH) , df=1 , lower.tail=F )			
 
@@ -184,4 +191,4 @@ for ( p in 1:nrow(peaks) ) {
 			}
 		}
 	}
-}
+}  

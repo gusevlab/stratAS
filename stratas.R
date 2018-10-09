@@ -1,5 +1,5 @@
-library('VGAM')
-library("optparse")
+library(VGAM)
+library(optparse)
 
 option_list = list(
 	make_option("--input", action="store", default=NA, type='character',
@@ -18,7 +18,7 @@ option_list = list(
               help="Window (in bp) for SNPs to test around the peak boundary. [default: %default]"),
 	make_option("--perm", action="store", default=0 , type='integer',
               help="# of permutations to perm (0=off). [default: %default]"),
-	make_option("--min_cov", action="store", default=5 , type='integer',
+	make_option("--min_cov", action="store", default=1 , type='integer',
               help="Individuals must have at least this many reads (for both alleles) to be tested. [default: %default]"),
 	make_option("--min_maf", action="store", default=0.01 , type='double',
               help="Minimum minor allele frequency for test SNP. [default: %default]"),
@@ -27,15 +27,21 @@ option_list = list(
 	make_option("--max_rho", action="store", default=0.10 , type='double',
               help="Maximum local/global over-dispersion parameter for which to include individual in test. [default: %default]"),
 	make_option("--binom", action="store_true", default=FALSE,
-              help="Also perform a standard binomial test. [default: %default]")
+              help="Also perform a standard binomial test. [default: %default]"),
+	make_option("--exclude", action="store_true", default=75 , type='integer',
+              help="The mimium distance between SNPs allowed in the haplotype. [default: %default]")
 )
 opt = parse_args(OptionParser(option_list=option_list))
+
+message("Files being read in")
 
 peaks = read.table( opt$peaks , head=T , as.is=T)
 mat = read.table( opt$input , as.is=T )
 phe = read.table( opt$samples , head=T , as.is=T)
 cnv.all = read.table( opt$global_param , head=T ,as.is=T)
-cnv.local = read.table( opt$local_param , head=T ,as.is=T)
+#cnv.local = read.table( opt$local_param , head=T ,as.is=T)
+
+message("Files have been read in")
 
 PAR.WIN = opt$window
 NUM.PERM = opt$perm
@@ -56,6 +62,7 @@ bbinom.test = function( ref , alt , rho ) {
 		opt = optimize( bb.loglike , interval=c(0,1) , ref , alt, rho )
 		opt$lrt = 2 * (opt$objective - bb.loglike( 0.5 , ref , alt , rho) )
 		opt$pv = pchisq( abs(opt$lrt) , df=1 , lower.tail=F )
+		#opt$pv = pchisq( abs(opt$lrt) , df=1 , lower.tail=F ) * length(ref)
 	} else {
 		opt = list( "lrt" = NA , "pv" = NA , "min" = NA )
 	}
@@ -66,8 +73,8 @@ cur.chr = unique(mat[,1])
 m = match(peaks$CHR , cur.chr )
 peaks = peaks[!is.na(m),]
 
-m = match(cnv.local$CHR , cur.chr )
-cnv.local = cnv.local[!is.na(m),]
+#m = match(cnv.local$CHR , cur.chr )
+#cnv.local = cnv.local[!is.na(m),]
 
 N = (ncol(mat) - 5)/4
 M = nrow(mat)
@@ -97,27 +104,28 @@ for ( i in 1:N ) {
 	HAPS[[2]][HET & !cur.ALT,i] = mat[ HET & !cur.ALT , 6 + 4*(i-1) + 2 ]	
 }
 
-options( digits = 2 )
+options( digits = 4 )
 
 for ( p in 1:nrow(peaks) ) {
 	cur = mat[,1] == peaks$CHR[p] & mat[,2] >= peaks$P0[p] & mat[,2] <= peaks$P1[p]
-	cur.cnv = cnv.local[ cnv.local$CHR == peaks$CHR[p] & cnv.local$P0 < peaks$P0[p] & cnv.local$P1 > peaks$P1[p] , ]
-	m = match( phe$ID , cur.cnv$ID )
-	cur.cnv = cur.cnv[m,]
-	RHO = cur.cnv$PHI
+	
+
+	#cur.cnv = cnv.local[ cnv.local$CHR == peaks$CHR[p] & cnv.local$P0 < peaks$P0[p] & cnv.local$P1 > peaks$P1[p] , ]
+	#m = match( phe$ID , cur.cnv$ID )
+	#cur.cnv = cur.cnv[m,]
+	RHO = RHO.ALL
 	RHO[ RHO > MAX.RHO ] = NA
 	
 	# collapse reads at this peak
 	cur.h1 = vector()
 	cur.h2 = vector()
 	cur.i = vector()
-	# Remove any sites that are too close together
-	snps.overlap = ( c(mat[cur,2],NA) - c(NA,mat[cur,2]) < 100 )[ 1:sum(cur) ]
-	snps.overlap[1] = FALSE
-	cur[ cur ] = !snps.overlap
 	
 	for ( i in 1:N ) {
 		reads.keep = GENO.H1[cur,i] != GENO.H2[cur,i] & HAPS[[1]][cur,i] >= MIN.COV & HAPS[[2]][cur,i] >= MIN.COV
+		
+		reads.keep[reads.keep] <- !c(FALSE, diff(mat[cur, 2][reads.keep]) < opt$exclude)
+
 		cur.h1 = c( cur.h1 , (HAPS[[1]][cur,i])[reads.keep] )
 		cur.h2 = c( cur.h2 , (HAPS[[2]][cur,i])[reads.keep] )
 		cur.i = c( cur.i , rep( i , sum(reads.keep)) )
@@ -126,7 +134,9 @@ for ( p in 1:nrow(peaks) ) {
 	if ( length(unique(cur.i)) > MIN.MAF*N && sum(cur.h1) + sum(cur.h2) > 0 ) {
 		cat( p , p / nrow(peaks) , unlist(peaks[p,]) , '\n' , file=stderr() )
 		# test all nearby SNPs
+
 		cur.snp = mat[,1] == peaks$CHR[p] & mat[,2] >= peaks$CENTER[p] - PAR.WIN & mat[,2] <= peaks$CENTER[p] + PAR.WIN
+
 		for ( s in which(cur.snp) ) {
 			# restrict to hets
 			HET = GENO.H1[s,] != GENO.H2[s,] & !is.na(RHO)
@@ -139,7 +149,6 @@ for ( p in 1:nrow(peaks) ) {
 				CUR.IND = c( cur.i[ !is.na(m1) ] , cur.i[ !is.na(m2)] )
 
 				if ( sum(CUR.REF) + sum(CUR.ALT) > 0 ) {
-					
 					for ( perm in 0:NUM.PERM ) {
 						if ( perm > 0 ) {
 							# randomly swap REF/ALT alleles
@@ -163,8 +172,8 @@ for ( p in 1:nrow(peaks) ) {
 						# --- perform beta-binomial test
 						tst.bbinom.C0 = bbinom.test( CUR.REF.C0 , CUR.ALT.C0 , RHO[CUR.IND.C0] )
 						tst.bbinom.C1 = bbinom.test( CUR.REF.C1 , CUR.ALT.C1 , RHO[CUR.IND.C1] )
-						tst.bbinom.BOTH = bbinom.test( CUR.REF , CUR.ALT , RHO[CUR.IND] )
-						lrt.BOTH = 2 * (tst.bbinom.C0$objective + tst.bbinom.C1$objective - tst.bbinom.BOTH$objective)
+						tst.bbinom.ALL = bbinom.test( CUR.REF , CUR.ALT , RHO[CUR.IND] )
+						lrt.BOTH = 2 * (tst.bbinom.C0$objective + tst.bbinom.C1$objective - tst.bbinom.ALL$objective)
 						pv.BOTH = pchisq( abs(lrt.BOTH) , df=1 , lower.tail=F )			
 
 						# --- perform binomial test
@@ -177,7 +186,7 @@ for ( p in 1:nrow(peaks) ) {
 							
 							cat( unlist(mat[s,1:3]) , unlist(peaks[p,c("P0","P1","NAME","CENTER")]) , sum(HET) , sum(CUR.REF) + sum(CUR.ALT) , tst.binom$est , tst.binom$p.value , tst.bbinom.BOTH$min , tst.bbinom.BOTH$pv , tst.fisher$est , tst.binom.C0$p.value , tst.bbinom.C0$pv , tst.binom.C1$p.value , tst.bbinom.C1$pv , tst.fisher$p.value , pv.BOTH , '\n' , sep='\t' )
 						} else {
-							cat( unlist(mat[s,1:3]) , unlist(peaks[p,c("P0","P1","NAME","CENTER")]) , sum(HET) , sum(CUR.REF) + sum(CUR.ALT) , tst.bbinom.C0$min , tst.bbinom.C0$pv , tst.bbinom.C1$min , tst.bbinom.C1$pv , pv.BOTH , '\n' , sep='\t' )
+							cat( unlist(mat[s,1:3]) , unlist(peaks[p,c("P0","P1","NAME","CENTER")]) , sum(HET) , sum(CUR.REF) + sum(CUR.ALT) , tst.bbinom.ALL$min , tst.bbinom.ALL$pv , tst.bbinom.C0$min , tst.bbinom.C0$pv , tst.bbinom.C1$min , tst.bbinom.C1$pv , lrt.BOTH , pv.BOTH , '\n' , sep='\t' )
 						}
 					}
 				}

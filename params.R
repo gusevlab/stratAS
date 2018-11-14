@@ -2,6 +2,8 @@ library('VGAM')
 library("optparse")
 
 option_list = list(
+	make_option("--id", action="store", default=NA, type='character',
+              help="Sample identifier [required]"),
 	make_option("--inp_counts", action="store", default=NA, type='character',
               help="Path to file containing allelic counts for this individual [required]"),
 	make_option("--inp_cnv", action="store", default=NA, type='character',
@@ -9,7 +11,7 @@ option_list = list(
 	make_option("--out", action="store", default=NA, type='character',
               help="Path to output files [required]"),
 	make_option("--min_cov", action="store", default=5 , type='integer',
-              help="Minimum number of REF reads and ALT reads to include this site. [default: %default]")	
+              help="Minimum number of REF reads and ALT reads to include this site. [default: %default]")              
 )
 opt = parse_args(OptionParser(option_list=option_list))
     
@@ -44,7 +46,7 @@ if ( !is.na(opt$inp_cnv) ) {
 			num[c] = sum(overlap)
 		}
 	}
-	write.table( cbind(cnv[,c("CHR","P0","P1")],format(cbind(phi,mu),digits=3),num) , quote=F, row.names=F, col.names=c("CHR","P0","P1","PHI","MU","N"), sep='\t' , file=paste(opt$out,".local.params",sep=''))
+	write.table( cbind(opt$id,cnv[,c("CHR","P0","P1")],format(cbind(phi,mu),digits=3),num) , quote=F, row.names=F, col.names=c("ID","CHR","P0","P1","PHI","MU","N"), sep='\t' , file=paste(opt$out,".local.params",sep=''))
 }
 
 # fit all counts
@@ -53,4 +55,19 @@ cof = Coef(fit)
 phi = 1/(1+sum(cof))
 mu = cof[1] / sum(cof)
 num = length( al.ref )
-write.table( cbind(phi , mu, num) , quote=F , row.names=F , sep='\t' , col.names=c("PHI","MU","N") , file=paste(opt$out,".global.params",sep='') )
+write.table( cbind(opt$id,phi , mu, num) , quote=F , row.names=F , sep='\t' , col.names=c("ID","PHI","MU","N") , file=paste(opt$out,".global.params",sep='') )
+
+# --- check overdispersion by quantiles (with enough data)
+#if ( opt$debug ) {
+#	# split into deciles
+#	decs = quantile(al.ref+al.alt, prob = seq(0, 1, length = 3), type = 5)
+#	for ( i in 1:4 ) {
+#		keep = al.ref+al.alt >= decs[i] & al.ref+al.alt < decs[i+1]
+#		fit = vglm(cbind( al.ref[keep] , al.alt[keep] ) ~ 1, betabinomialff, trace = FALSE)
+#		cof = Coef(fit)
+#		phi = 1/(1+sum(cof))
+#		mu = cof[1] / sum(cof)
+#		num = length( al.ref )
+#		cat( decs[i] , decs[i+1] , phi , mu , num , '\n' ) 
+#	}
+#}

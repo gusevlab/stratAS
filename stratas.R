@@ -39,7 +39,6 @@ peaks = read.table( opt$peaks , head=T , as.is=T)
 mat = read.table( opt$input , as.is=T )
 phe = read.table( opt$samples , head=T , as.is=T)
 cnv.all = read.table( opt$global_param , head=T ,as.is=T)
-#cnv.local = read.table( opt$local_param , head=T ,as.is=T)
 
 message("Files have been read in")
 
@@ -64,7 +63,7 @@ bbinom.test = function( ref , alt , rho ) {
 		opt$pv = pchisq( abs(opt$lrt) , df=1 , lower.tail=F )
 		#opt$pv = pchisq( abs(opt$lrt) , df=1 , lower.tail=F ) * length(ref)
 	} else {
-		opt = list( "lrt" = NA , "pv" = NA , "min" = NA )
+		opt = list( "lrt" = NA , "pv" = NA , "min" = NA , "objective" = NA )
 	}
 	return( opt )
 }
@@ -73,8 +72,11 @@ cur.chr = unique(mat[,1])
 m = match(peaks$CHR , cur.chr )
 peaks = peaks[!is.na(m),]
 
-#m = match(cnv.local$CHR , cur.chr )
-#cnv.local = cnv.local[!is.na(m),]
+if ( !is.na(opt$local_param) )  {
+	cnv.local = read.table( opt$local_param , head=T ,as.is=T)
+	m = match(cnv.local$CHR , cur.chr )
+	cnv.local = cnv.local[!is.na(m),]
+}
 
 N = (ncol(mat) - 5)/4
 M = nrow(mat)
@@ -106,16 +108,19 @@ for ( i in 1:N ) {
 
 options( digits = 4 )
 
+RHO = RHO.ALL
+RHO[ RHO > MAX.RHO ] = NA
+
 for ( p in 1:nrow(peaks) ) {
 	cur = mat[,1] == peaks$CHR[p] & mat[,2] >= peaks$P0[p] & mat[,2] <= peaks$P1[p]
-	
+	if(sum(cur) == 0 ) next()
 
-	#cur.cnv = cnv.local[ cnv.local$CHR == peaks$CHR[p] & cnv.local$P0 < peaks$P0[p] & cnv.local$P1 > peaks$P1[p] , ]
-	#m = match( phe$ID , cur.cnv$ID )
-	#cur.cnv = cur.cnv[m,]
-	RHO = RHO.ALL
-	RHO[ RHO > MAX.RHO ] = NA
-	
+	if ( !is.na(opt$local_param) )  {
+		cur.cnv = cnv.local[ cnv.local$CHR == peaks$CHR[p] & cnv.local$P0 < peaks$P0[p] & cnv.local$P1 > peaks$P1[p] , ]
+		m = match( phe$ID , cur.cnv$ID )
+		cur.cnv = cur.cnv[m,]
+	}
+
 	# collapse reads at this peak
 	cur.h1 = vector()
 	cur.h2 = vector()
@@ -123,19 +128,20 @@ for ( p in 1:nrow(peaks) ) {
 	
 	for ( i in 1:N ) {
 		reads.keep = GENO.H1[cur,i] != GENO.H2[cur,i] & HAPS[[1]][cur,i] >= MIN.COV & HAPS[[2]][cur,i] >= MIN.COV
-		
 		reads.keep[reads.keep] <- !c(FALSE, diff(mat[cur, 2][reads.keep]) < opt$exclude)
-
 		cur.h1 = c( cur.h1 , (HAPS[[1]][cur,i])[reads.keep] )
 		cur.h2 = c( cur.h2 , (HAPS[[2]][cur,i])[reads.keep] )
 		cur.i = c( cur.i , rep( i , sum(reads.keep)) )
 	}
 	
 	if ( length(unique(cur.i)) > MIN.MAF*N && sum(cur.h1) + sum(cur.h2) > 0 ) {
-		cat( p , p / nrow(peaks) , unlist(peaks[p,]) , '\n' , file=stderr() )
 		# test all nearby SNPs
 
-		cur.snp = mat[,1] == peaks$CHR[p] & mat[,2] >= peaks$CENTER[p] - PAR.WIN & mat[,2] <= peaks$CENTER[p] + PAR.WIN
+		if( PAR.WIN == -1 ) {
+			cur.snp = mat[,1] == peaks$CHR[p] & mat[,2] >= peaks$P0[p] & mat[,2] <= peaks$P1[p]
+		} else {
+			cur.snp = mat[,1] == peaks$CHR[p] & mat[,2] >= peaks$CENTER[p] - PAR.WIN & mat[,2] <= peaks$CENTER[p] + PAR.WIN
+		}
 
 		for ( s in which(cur.snp) ) {
 			# restrict to hets

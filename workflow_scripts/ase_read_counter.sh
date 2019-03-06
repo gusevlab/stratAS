@@ -21,5 +21,4 @@ samtools index $AHS/ase_read_counter_output/${SAMPLE}.red.sorted.bam
    -I $AHS/ase_read_counter_output/${SAMPLE}.red.sorted.bam \
    -sites $AHS/all_chrs_${VCF}.recode.vcf \
    -U ALLOW_N_CIGAR_READS \
-   -minDepth 10
-
+   -minDepth 1

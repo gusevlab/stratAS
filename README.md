@@ -71,7 +71,7 @@ Rscript stratas.R \
 
 ### Output data
 
-The ASE test is printed to screen with each line containing the following entries:
+By default, the ASE test is printed to screen with each line containing the following entries:
 
 | Column | Description |
 | --- | --- |
@@ -84,19 +84,34 @@ The ASE test is printed to screen with each line containing the following entrie
 | CENTER | Center position of peak (or TSS for gene) |
 | N.HET | # of heterozygous individuals tested |
 | N.READS | # of reads tested in total |
-| BINOM.EST | Allelic fraction estimate from standard binomial test across both conditions [*] |
-| BINOM.P | Binomial test for imbalance across both conditions [*] |
-| BBINOM.EST | Allelic fraction estimate from beta binomial test across both conditions |
-| BBINOM.P | Beta-binomial test for imbalance across both conditions  |
-| FISHER.EST | Fisher's test odd's ratio for difference between conditions [*] |
-| BINOM.C0.P | Binomial test for imbalance in condition 0 [*] |
-| BBINOM.C0.P | Beta-binomial test for imbalance in condition 0 |
-| BINOM.C1.P | Binomial test for imbalance in condition 1 [*] |
-| BBINOM.C1.P | Beta-binomial test for imbalance in condition 1 |
-| FISHER.DIFF.P | Fisher's test difference between conditions [*] |
-| BBINOM.DIFF.P | Beta-binomial test for difference between conditions |
+| ALL.AF | Allelic fraction estimate from beta binomial test across both conditions |
+| ALL.BBINOM.P | Beta-binomial test for imbalance across both conditions  |
+| C0.AF | Allelic fraction estimate from condition 0 |
+| C0.BBINOM.P | Beta-binomial test for imbalance in condition 0 |
+| C1.AF | Allelic fraction estimate from condition 1 |
+| C1.BBINOM.P | Beta-binomial test for imbalance in condition 1 |
+| DIFF.BBINOM.P | Beta-binomial test for difference between conditions |
 
-*\* these fields are only reported if `--binom` is set* 
+Enabling the `--binom` flag additionally produces the following columns:
+
+| Column | Description |
+| --- | --- |
+| ALL.BINOM.P | Binomial test for imbalance across both conditions|
+| ALL.C0.BINOM.P | Binomial test for imbalance in condition 0 |
+| ALL.C1.BINOM.P | Binomial test for imbalance in condition 1 |
+| FISHER.OR | Fisher's test odd's ratio for difference between conditions|
+| FISHER.DIFF.P | Fisher's test difference between conditions |
+
+Enabling the `--indiv` flag additionally produces the following columns:
+
+| Column | Description |
+| --- | --- |
+| IND.C0 | Number of each condition 0 individual included in this test (comma separated) |
+| IND.C0.COUNT.REF | condition 0 REF allele counts of each individual included in this test (comma separated) |
+| IND.C0.COUNT.ALT | condition 0 ALT allele counts of each individual included in this test (comma separated) |
+| IND.C1 | Number of each condition 1 individual included in this test (comma separated) |
+| IND.C1.COUNT.REF | condition 1 REF allele counts of each individual included in this test (comma separated) |
+| IND.C1.COUNT.ALT | condition 1 ALT allele counts of each individual included in this test (comma separated) |
 
 ## Example
 
@@ -110,6 +125,26 @@ Rscript stratas.R \
 --global_param example/KIRC.ALL.AS.CNV \
 --local_param=example/KIRC.ALL.AS.CNVLOCAL
 ```
+## Detailed Parameters
+
+| Parameter | Description |
+| --- | --- |
+| `--input` | Path to input file |
+| `--samples` | Path to sample identifier file, must have ID and CONDITION columns |
+| `--peaks` | Path to file containing peak/gene boundaries, must contain CHR P0 P1 NAME CENTER columns |
+| `--global_param` | Path to global overdispersion parameter file |
+| `--local_param` | Path to local overdispersion parameter file |
+| `--out` | Path to output |
+| `--window` | Window (in bp) for SNPs to test around the peak boundary |
+| `--perm` | # of permutations to shuffle the allele labels (0=off) |
+| `--perm_cond` | # of permutations to shuffle the condition labels (0=off) |
+| `--min_cov` | Individuals must have at least this many reads (for both alleles) to be tested |
+| `--min_maf` | Minimum minor allele frequency for test SNP |
+| `--min_het` | Minimum minor heterozygous frequency for test SNP |
+| `--max_rho` | Maximum local/global over-dispersion parameter for which to include individual in test |
+| `--binom` | Also perform a standard binomial test |
+| `--indiv` | Also report the per-individual allele fractions (Warning, this can produce large files) |
+| `--exclude` | The mimium distance between SNPs allowed in the haplotype (to exclude variants in the same read) |
 
 ## Notes:
 

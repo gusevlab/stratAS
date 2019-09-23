@@ -12,12 +12,12 @@ option_list = list(
               help="Path to global parameter file [required]"),
 	make_option("--local_param", action="store", default=NA, type='character',
               help="Path to local parameter file [required]"),
-	make_option("--out", action="store", default=NA, type='character',
-              help="Path to output [required]"),
 	make_option("--window", action="store", default=100e3 , type='integer',
               help="Window (in bp) for SNPs to test around the peak boundary. [default: %default]"),
 	make_option("--perm", action="store", default=0 , type='integer',
-              help="# of permutations to perm (0=off). [default: %default]"),
+              help="# of permutations to shuffle the allele labels (0=off). [default: %default]"),
+	make_option("--perm_cond", action="store", default=0 , type='integer',
+	            help="# of permutations to shuffle the condition labels (0=off). [default: %default]"),	
 	make_option("--min_cov", action="store", default=1 , type='integer',
               help="Individuals must have at least this many reads (for both alleles) to be tested. [default: %default]"),
 	make_option("--min_maf", action="store", default=0.01 , type='double',
@@ -28,27 +28,47 @@ option_list = list(
               help="Maximum local/global over-dispersion parameter for which to include individual in test. [default: %default]"),
 	make_option("--binom", action="store_true", default=FALSE,
               help="Also perform a standard binomial test. [default: %default]"),
+	make_option("--indiv", action="store_true", default=FALSE,
+	            help="Also report the per-individual allele fractions. [default: %default]"),	
 	make_option("--exclude", action="store_true", default=75 , type='integer',
               help="The mimium distance between SNPs allowed in the haplotype. [default: %default]")
 )
 opt = parse_args(OptionParser(option_list=option_list))
 
-message("Files being read in")
-
-peaks = read.table( opt$peaks , head=T , as.is=T)
-mat = read.table( opt$input , as.is=T )
-phe = read.table( opt$samples , head=T , as.is=T)
-cnv.all = read.table( opt$global_param , head=T ,as.is=T)
-
-message("Files have been read in")
-
 PAR.WIN = opt$window
+
 NUM.PERM = opt$perm
+NUM.PERM_COND = opt$perm_cond
+
 MIN.MAF = opt$min_maf
 MIN.HET = opt$min_het
 MIN.COV = opt$min_cov
 MAX.RHO = opt$max_rho
 DO.BINOM = opt$binom
+DO.INDIV = opt$indiv
+
+message("-----------------------------------")
+message("stratAS")
+message("https://github.com/gusevlab/stratAS")
+message("-----------------------------------")
+
+# --- error checks:
+if ( NUM.PERM > 0 && NUM.PERM_COND > 0 ) {
+  stop("ERROR: --perm and --perm_cond cannot both be set\n")
+}
+
+if ( NUM.PERM < 0 || NUM.PERM_COND < 0 ) {
+  stop("ERROR: --perm or --perm_cond cannot be negative\n")
+}
+# ---
+
+message("Files being read in")
+peaks = read.table( opt$peaks , head=T , as.is=T)
+mat = read.table( opt$input , as.is=T )
+phe = read.table( opt$samples , head=T , as.is=T)
+cnv.all = read.table( opt$global_param , head=T ,as.is=T)
+message("Files have been read in")
+
 PERM.PVTHRESH = 0.05 / nrow(mat)
 
 bb.loglike = function( mu , ref , alt, rho ) {
@@ -111,6 +131,16 @@ options( digits = 4 )
 RHO = RHO.ALL
 RHO[ RHO > MAX.RHO ] = NA
 
+COL.HEADER = c("CHR","POS","RSID","P0","P1","NAME","CENTER","N.HET","N.READS","ALL.AF","ALL.BBINOM.P","C0.AF","C0.BBINOM.P","C1.AF","C1.BBINOM.P","DIFF.BBINOM.P")
+COL.HEADER.BINOM = c("ALL.BINOM.P","ALL.C0.BINOM.P","ALL.C1.BINOM.P","FISHER.OR","FISHER.DIFF.P")
+COL.HEADER.INDIV = c("IND.C0","IND.C0.COUNT.REF","IND.C0.COUNT.ALT","IND.C1","IND.C1.COUNT.REF","IND.C1.COUNT.ALT")
+
+HEAD = COL.HEADER
+if ( DO.BINOM ) HEAD = c(HEAD,COL.HEADER.BINOM)
+if ( DO.INDIV ) HEAD = c(HEAD,COL.HEADER.INDIV)
+cat( HEAD , sep='\t')
+cat('\n')
+
 for ( p in 1:nrow(peaks) ) {
 	cur = mat[,1] == peaks$CHR[p] & mat[,2] >= peaks$P0[p] & mat[,2] <= peaks$P1[p]
 	if(sum(cur) == 0 ) next()
@@ -155,14 +185,22 @@ for ( p in 1:nrow(peaks) ) {
 				CUR.IND = c( cur.i[ !is.na(m1) ] , cur.i[ !is.na(m2)] )
 
 				if ( sum(CUR.REF) + sum(CUR.ALT) > 0 ) {
-					for ( perm in 0:NUM.PERM ) {
+					for ( perm in 0:max(NUM.PERM,NUM.PERM_COND) ) {
+					  
+					  CUR.PHENO = PHENO
+					  
 						if ( perm > 0 ) {
 							# randomly swap REF/ALT alleles
-							cur.swap = unique(CUR.IND)[ as.logical(rbinom( length(unique(CUR.IND)) , 1 , 0.5 )) ]
-							cur.swap = !is.na(match( CUR.IND , cur.swap ))
-							tmp = CUR.REF[ cur.swap ]
-							CUR.REF[ cur.swap ] = CUR.ALT[ cur.swap ]
-							CUR.ALT[ cur.swap ] = tmp
+						  if ( NUM.PERM > 0 ) {
+  							cur.swap = unique(CUR.IND)[ as.logical(rbinom( length(unique(CUR.IND)) , 1 , 0.5 )) ]
+  							cur.swap = !is.na(match( CUR.IND , cur.swap ))
+  							tmp = CUR.REF[ cur.swap ]
+  							CUR.REF[ cur.swap ] = CUR.ALT[ cur.swap ]
+  							CUR.ALT[ cur.swap ] = tmp
+  						# shuffle the phenotype label
+  						} else if (NUM.PERM_COND > 0 ) {
+						    CUR.PHENO = sample(PHENO)
+						  }
 						}
 
 						m = !is.na(match( CUR.IND , which(PHENO==0) ))
@@ -182,6 +220,9 @@ for ( p in 1:nrow(peaks) ) {
 						lrt.BOTH = 2 * (tst.bbinom.C0$objective + tst.bbinom.C1$objective - tst.bbinom.ALL$objective)
 						pv.BOTH = pchisq( abs(lrt.BOTH) , df=1 , lower.tail=F )			
 
+						# --- print main output
+						cat( unlist(mat[s,1:3]) , unlist(peaks[p,c("P0","P1","NAME","CENTER")]) , sum(HET) , sum(CUR.REF) + sum(CUR.ALT) , tst.bbinom.ALL$min , tst.bbinom.ALL$pv , tst.bbinom.C0$min , tst.bbinom.C0$pv , tst.bbinom.C1$min , tst.bbinom.C1$pv , pv.BOTH , sep='\t' )
+						
 						# --- perform binomial test
 						if ( DO.BINOM ) {
 							tst.binom = binom.test( sum(CUR.ALT),sum(CUR.REF)+sum(CUR.ALT) )
@@ -189,11 +230,16 @@ for ( p in 1:nrow(peaks) ) {
 							if ( sum(CUR.REF.C1)+sum(CUR.ALT.C1) > 0 ) tst.binom.C1 = binom.test( sum(CUR.ALT.C1),sum(CUR.REF.C1)+sum(CUR.ALT.C1) ) else tst.binom.C1 = list("p.value"=NA)
 							# --- perform fisher's exact test between conditions					
 							tst.fisher = fisher.test( cbind( c(sum(CUR.REF.C0),sum(CUR.ALT.C0)) , c(sum(CUR.REF.C1),sum(CUR.ALT.C1)) ) )
-							
-							cat( unlist(mat[s,1:3]) , unlist(peaks[p,c("P0","P1","NAME","CENTER")]) , sum(HET) , sum(CUR.REF) + sum(CUR.ALT) , tst.binom$est , tst.binom$p.value , tst.bbinom.BOTH$min , tst.bbinom.BOTH$pv , tst.fisher$est , tst.binom.C0$p.value , tst.bbinom.C0$pv , tst.binom.C1$p.value , tst.bbinom.C1$pv , tst.fisher$p.value , pv.BOTH , '\n' , sep='\t' )
-						} else {
-							cat( unlist(mat[s,1:3]) , unlist(peaks[p,c("P0","P1","NAME","CENTER")]) , sum(HET) , sum(CUR.REF) + sum(CUR.ALT) , tst.bbinom.ALL$min , tst.bbinom.ALL$pv , tst.bbinom.C0$min , tst.bbinom.C0$pv , tst.bbinom.C1$min , tst.bbinom.C1$pv , lrt.BOTH , pv.BOTH , '\n' , sep='\t' )
+
+							cat( "" , tst.binom$p.value ,  tst.binom.C0$p.value , tst.binom.C1$p.value , tst.fisher$est , tst.fisher$p.value , sep='\t' )
 						}
+						
+						# --- print individual counts
+						if ( DO.INDIV ) {
+						  cat( "" , paste(CUR.IND.C0,collapse=',') , paste(CUR.REF.C0,collapse=',') , paste(CUR.ALT.C0,collapse=',') , paste(CUR.IND.C1,collapse=',') , paste(CUR.REF.C1,collapse=',') , paste(CUR.ALT.C1,collapse=',') , sep='\t' )
+						}
+						
+						cat('\n')
 					}
 				}
 			}

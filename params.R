@@ -46,7 +46,11 @@ if ( !is.na(opt$inp_cnv) ) {
 			num[c] = sum(overlap)
 		}
 	}
+	if ( sum(colnames(cnv) == "CNV") == 1 ) {
+	write.table( cbind(opt$id,cnv[,c("CHR","P0","P1","CNV")],format(cbind(phi,mu),digits=3),num) , quote=F, row.names=F, col.names=c("ID","CHR","P0","P1","CNV","PHI","MU","N"), sep='\t' , file=paste(opt$out,".local.params",sep=''))
+	} else {
 	write.table( cbind(opt$id,cnv[,c("CHR","P0","P1")],format(cbind(phi,mu),digits=3),num) , quote=F, row.names=F, col.names=c("ID","CHR","P0","P1","PHI","MU","N"), sep='\t' , file=paste(opt$out,".local.params",sep=''))
+	}
 }
 
 # fit all counts

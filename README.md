@@ -36,7 +36,7 @@ zcat $VCF \
  > $OUT.counts
 ```
 
-For tumor data, local CNV-specific parameters are also estimated, and the `--inp_cnv` file must be provided with headers `CHR P0 P1` listing the boundaries of CNV regions.
+For tumor data, local CNV-specific parameters are also estimated, and the `--inp_cnv` file must be provided with headers `CHR P0 P1` listing the boundaries of CNV regions. This file can additionally contain a `CNV` column listing the CNV estimate (centered to zero as in TCGA calls) for inclusion as a covariate in the final analysis.
 
 inference is then performed by running:
 ```
@@ -92,7 +92,7 @@ By default, the ASE test is printed to screen with each line containing the foll
 | C1.BBINOM.P | Beta-binomial test for imbalance in condition 1 |
 | DIFF.BBINOM.P | Beta-binomial test for difference between conditions |
 
-Enabling the `--binom` flag additionally produces the following columns:
+Enabling the `--binom` flag additionally runs a standard binomial test, and produces the following columns:
 
 | Column | Description |
 | --- | --- |
@@ -101,6 +101,14 @@ Enabling the `--binom` flag additionally produces the following columns:
 | ALL.C1.BINOM.P | Binomial test for imbalance in condition 1 |
 | FISHER.OR | Fisher's test odd's ratio for difference between conditions|
 | FISHER.DIFF.P | Fisher's test difference between conditions |
+
+Enabling the `--bbreg` flag additionally runs a beta binomial regression with CNV as covariate, and produces the following columns:
+
+| Column | Description |
+| --- | --- |
+| ALL.BBREG.P | Beta binomial regression (with covariates) for imbalance across both conditions |
+| DIFF.BBREG.P | Beta binomial regression (with covariates) for imbalance difference between conditions |
+| CNV.BBREG.P | Beta binomial regression (with covariates) for imbalance along CNV covariate |
 
 Enabling the `--indiv` flag additionally produces the following columns:
 
@@ -143,6 +151,7 @@ Rscript stratas.R \
 | `--min_het` | Minimum minor heterozygous frequency for test SNP |
 | `--max_rho` | Maximum local/global over-dispersion parameter for which to include individual in test |
 | `--binom` | Also perform a standard binomial test |
+| `--bbreg` | Also perform a beta binomial regression with local CNV status as a covariate (must also provide `--local_param` file) |
 | `--indiv` | Also report the per-individual allele fractions (Warning, this can produce large files) |
 | `--exclude` | The mimium distance between SNPs allowed in the haplotype (to exclude variants in the same read) |
 

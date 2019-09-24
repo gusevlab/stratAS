@@ -11,7 +11,7 @@ option_list = list(
 	make_option("--global_param", action="store", default=NA, type='character',
               help="Path to global parameter file [required]"),
 	make_option("--local_param", action="store", default=NA, type='character',
-              help="Path to local parameter file [required]"),
+              help="Path to local parameter file"),
 	make_option("--window", action="store", default=100e3 , type='integer',
               help="Window (in bp) for SNPs to test around the peak boundary. [default: %default]"),
 	make_option("--perm", action="store", default=0 , type='integer',
@@ -28,6 +28,8 @@ option_list = list(
               help="Maximum local/global over-dispersion parameter for which to include individual in test. [default: %default]"),
 	make_option("--binom", action="store_true", default=FALSE,
               help="Also perform a standard binomial test. [default: %default]"),
+	make_option("--bbreg", action="store_true", default=FALSE,
+	            help="Also perform a beta binomial regression, requires library(aod). [default: %default]"),	
 	make_option("--indiv", action="store_true", default=FALSE,
 	            help="Also report the per-individual allele fractions. [default: %default]"),	
 	make_option("--exclude", action="store_true", default=75 , type='integer',
@@ -46,6 +48,7 @@ MIN.COV = opt$min_cov
 MAX.RHO = opt$max_rho
 DO.BINOM = opt$binom
 DO.INDIV = opt$indiv
+DO.BBREG = opt$bbreg
 
 message("-----------------------------------")
 message("stratAS")
@@ -53,6 +56,13 @@ message("https://github.com/gusevlab/stratAS")
 message("-----------------------------------")
 
 # --- error checks:
+if ( DO.BBREG ) { 
+  library("aod")
+  if ( is.na(opt$local_param) ) {
+    stop("ERROR: --bbreg requires --local_param file\n")
+  }
+}
+
 if ( NUM.PERM > 0 && NUM.PERM_COND > 0 ) {
   stop("ERROR: --perm and --perm_cond cannot both be set\n")
 }
@@ -81,11 +91,40 @@ bbinom.test = function( ref , alt , rho ) {
 		opt = optimize( bb.loglike , interval=c(0,1) , ref , alt, rho )
 		opt$lrt = 2 * (opt$objective - bb.loglike( 0.5 , ref , alt , rho) )
 		opt$pv = pchisq( abs(opt$lrt) , df=1 , lower.tail=F )
-		#opt$pv = pchisq( abs(opt$lrt) , df=1 , lower.tail=F ) * length(ref)
 	} else {
 		opt = list( "lrt" = NA , "pv" = NA , "min" = NA , "objective" = NA )
 	}
 	return( opt )
+}
+
+bbreg.test = function( ind , ref , alt , rho , cond , covar ) {
+  if ( length(unique(cond)) > 1 && length(ref) > 0 && length(alt) > 0 && length(rho) > 0 ) {
+    df = data.frame( y=alt , n=ref+alt , cond = cond , covar = covar , phi.group = as.factor( ind ) )
+    n = length(rho)
+    # test with a fixed overd parameter for each individual (for some reason this is very SLOW!)
+    # reg = betabin( cbind( y , n - y  ) ~ 1 + cond , ~ phi.group , df , fixpar = list( 3:(n+2) , rho ) )
+    
+    # for efficiency, discretize the overd parameters into five groups
+    nq = 5
+    phi.q = rep(NA,length(ind))
+    rho.q = rep(NA,nq)
+    qq = quantile(unique(rho), probs = seq(0, 1, .2))
+    for ( i in 1:nq ) {
+      keep = rho >= qq[i] & rho <= qq[i+1]
+      phi.q[ keep ] = i
+      rho.q[ i ] = mean( rho[keep] )
+    }
+    df$phi.q = as.factor(phi.q)
+    
+    reg = betabin( cbind( y , n - y  ) ~ 1 + cond + covar , ~ phi.q , df , fixpar = list( 4:(nq+3) , rho.q ) )
+    
+    zscores = coef(reg) / sqrt(diag(vcov( reg )))
+    pvals = 2*(pnorm( abs(zscores) , lower.tail=F))
+    opt = list( "pv" = pvals )
+  } else {
+    opt = list( "pv" = NA )
+  }
+  return( opt )
 }
 
 cur.chr = unique(mat[,1])
@@ -134,10 +173,13 @@ RHO[ RHO > MAX.RHO ] = NA
 COL.HEADER = c("CHR","POS","RSID","P0","P1","NAME","CENTER","N.HET","N.READS","ALL.AF","ALL.BBINOM.P","C0.AF","C0.BBINOM.P","C1.AF","C1.BBINOM.P","DIFF.BBINOM.P")
 COL.HEADER.BINOM = c("ALL.BINOM.P","ALL.C0.BINOM.P","ALL.C1.BINOM.P","FISHER.OR","FISHER.DIFF.P")
 COL.HEADER.INDIV = c("IND.C0","IND.C0.COUNT.REF","IND.C0.COUNT.ALT","IND.C1","IND.C1.COUNT.REF","IND.C1.COUNT.ALT")
+COL.HEADER.BBREG = c("ALL.BBREG.P","DIFF.BBREG.P","CNV.BBREG.P")
 
 HEAD = COL.HEADER
 if ( DO.BINOM ) HEAD = c(HEAD,COL.HEADER.BINOM)
+if ( DO.BBREG ) HEAD = c(HEAD,COL.HEADER.BBREG)
 if ( DO.INDIV ) HEAD = c(HEAD,COL.HEADER.INDIV)
+
 cat( HEAD , sep='\t')
 cat('\n')
 
@@ -149,6 +191,9 @@ for ( p in 1:nrow(peaks) ) {
 		cur.cnv = cnv.local[ cnv.local$CHR == peaks$CHR[p] & cnv.local$P0 < peaks$P0[p] & cnv.local$P1 > peaks$P1[p] , ]
 		m = match( phe$ID , cur.cnv$ID )
 		cur.cnv = cur.cnv[m,]
+		RHO = cur.cnv$PHI
+		RHO[ RHO > MAX.RHO ] = NA
+		COVAR = cur.cnv$CNV
 	}
 
 	# collapse reads at this peak
@@ -203,12 +248,12 @@ for ( p in 1:nrow(peaks) ) {
 						  }
 						}
 
-						m = !is.na(match( CUR.IND , which(PHENO==0) ))
+						m = !is.na(match( CUR.IND , which(CUR.PHENO==0) ))
 						CUR.REF.C0 = CUR.REF[m]
 						CUR.ALT.C0 = CUR.ALT[m]
 						CUR.IND.C0 = CUR.IND[m]
 
-						m = !is.na(match( CUR.IND , which(PHENO==1) ))
+						m = !is.na(match( CUR.IND , which(CUR.PHENO==1) ))
 						CUR.REF.C1 = CUR.REF[m]
 						CUR.ALT.C1 = CUR.ALT[m]
 						CUR.IND.C1 = CUR.IND[m]		
@@ -232,6 +277,12 @@ for ( p in 1:nrow(peaks) ) {
 							tst.fisher = fisher.test( cbind( c(sum(CUR.REF.C0),sum(CUR.ALT.C0)) , c(sum(CUR.REF.C1),sum(CUR.ALT.C1)) ) )
 
 							cat( "" , tst.binom$p.value ,  tst.binom.C0$p.value , tst.binom.C1$p.value , tst.fisher$est , tst.fisher$p.value , sep='\t' )
+						}
+						
+						# --- perform beta-binom regression
+						if ( DO.BBREG ) {
+						  tst.bbreg = bbreg.test( CUR.IND , CUR.REF , CUR.ALT , RHO[ CUR.IND ] , CUR.PHENO[CUR.IND] , COVAR[CUR.IND] )
+						  cat( "" , tst.bbreg$pv , sep='\t' )
 						}
 						
 						# --- print individual counts

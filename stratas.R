@@ -97,33 +97,45 @@ bbinom.test = function( ref , alt , rho ) {
 	return( opt )
 }
 
-bbreg.test = function( ind , ref , alt , rho , cond , covar ) {
-  if ( length(unique(cond)) > 1 && length(ref) > 0 && length(alt) > 0 && length(rho) > 0 ) {
-    df = data.frame( y=alt , n=ref+alt , cond = cond , covar = covar , phi.group = as.factor( ind ) )
-    n = length(rho)
+bbreg.test = function( ref , alt , rho , covar , cond=NULL ) {
+    if ( !is.null(cond) ) {
+    	if ( sum(!is.na(covar)) == 0 ) return( list( "pv" = c(NA,NA,NA) ) )
+      df = data.frame( y=alt , n=ref+alt , cond = cond , covar = covar , rho=rho )      
+    } else {
+    	if ( sum(!is.na(covar)) == 0 ) return( list( "pv" = c(NA,NA) ) )
+      df = data.frame( y=alt , n=ref+alt , covar = covar , rho=rho )
+    }
+
     # test with a fixed overd parameter for each individual (for some reason this is very SLOW!)
     # reg = betabin( cbind( y , n - y  ) ~ 1 + cond , ~ phi.group , df , fixpar = list( 3:(n+2) , rho ) )
+    df = df[ !is.na(df$covar) & df$n > 0, ]
     
     # for efficiency, discretize the overd parameters into five groups
-    nq = 5
-    phi.q = rep(NA,length(ind))
+    nq = min( 5 , length(unique(rho)) )
+    phi.q = rep(NA,nrow(df))
     rho.q = rep(NA,nq)
-    qq = quantile(unique(rho), probs = seq(0, 1, .2))
+    qq = quantile(unique(df$rho), probs = seq(0, 1, 1/nq))
     for ( i in 1:nq ) {
-      keep = rho >= qq[i] & rho <= qq[i+1]
+      keep = df$rho >= qq[i] & df$rho <= qq[i+1]
       phi.q[ keep ] = i
-      rho.q[ i ] = mean( rho[keep] )
+      rho.q[ i ] = mean( df$rho[keep] )
     }
     df$phi.q = as.factor(phi.q)
-    
-    reg = betabin( cbind( y , n - y  ) ~ 1 + cond + covar , ~ phi.q , df , fixpar = list( 4:(nq+3) , rho.q ) )
+
+    # need at least two samples to do regression with covariates
+
+    if ( !is.null(cond) ) {
+      # need at least two samples in both conditions 
+      if ( nrow(df) < 2 || cor(df$covar,df$cond) == 1 || min(rle(sort(df$cond))$len) < 2 || sd(df$covar) == 0 || sd(df$cond) == 0 ) return( list( "pv" = c(NA,NA,NA) ) )
+      else reg = betabin( cbind( y , n - y  ) ~ 1 + cond + covar , ~ phi.q , df , fixpar = list( 4:(nq+3) , rho.q ) )
+    } else {
+      if ( nrow(df) < 2 || sd(df$covar) == 0 ) return( list( "pv" = c(NA,NA) ) )
+      else reg = betabin( cbind( y , n - y  ) ~ 1 + covar , ~ phi.q , df , fixpar = list( 3:(nq+2) , rho.q ) )
+    }
     
     zscores = coef(reg) / sqrt(diag(vcov( reg )))
     pvals = 2*(pnorm( abs(zscores) , lower.tail=F))
     opt = list( "pv" = pvals )
-  } else {
-    opt = list( "pv" = NA )
-  }
   return( opt )
 }
 
@@ -173,7 +185,7 @@ RHO[ RHO > MAX.RHO ] = NA
 COL.HEADER = c("CHR","POS","RSID","P0","P1","NAME","CENTER","N.HET","N.READS","ALL.AF","ALL.BBINOM.P","C0.AF","C0.BBINOM.P","C1.AF","C1.BBINOM.P","DIFF.BBINOM.P")
 COL.HEADER.BINOM = c("ALL.BINOM.P","ALL.C0.BINOM.P","ALL.C1.BINOM.P","FISHER.OR","FISHER.DIFF.P")
 COL.HEADER.INDIV = c("IND.C0","IND.C0.COUNT.REF","IND.C0.COUNT.ALT","IND.C1","IND.C1.COUNT.REF","IND.C1.COUNT.ALT")
-COL.HEADER.BBREG = c("ALL.BBREG.P","DIFF.BBREG.P","CNV.BBREG.P")
+COL.HEADER.BBREG = c("C0.BBREG.P","C0.CNV.BBREG.P","C1.BBREG.P","C1.CNV.BBREG.P","ALL.BBREG.P","DIFF.BBREG.P","DIFF.CNV.BBREG.P")
 
 HEAD = COL.HEADER
 if ( DO.BINOM ) HEAD = c(HEAD,COL.HEADER.BINOM)
@@ -281,8 +293,17 @@ for ( p in 1:nrow(peaks) ) {
 						
 						# --- perform beta-binom regression
 						if ( DO.BBREG ) {
-						  tst.bbreg = bbreg.test( CUR.IND , CUR.REF , CUR.ALT , RHO[ CUR.IND ] , CUR.PHENO[CUR.IND] , COVAR[CUR.IND] )
-						  cat( "" , tst.bbreg$pv , sep='\t' )
+						  tst.bbreg.c0 = bbreg.test( CUR.REF.C0 , CUR.ALT.C0 , RHO[ CUR.IND.C0 ] , COVAR[CUR.IND.C0] )
+						  tst.bbreg.c1 = bbreg.test( CUR.REF.C1 , CUR.ALT.C1 , RHO[ CUR.IND.C1 ] , COVAR[CUR.IND.C1] )
+						  tst.bbreg = bbreg.test( CUR.REF , CUR.ALT , RHO[ CUR.IND ] , COVAR[CUR.IND] , CUR.PHENO[CUR.IND] )
+						  
+						  #ref=CUR.REF
+						  #alt=CUR.ALT
+						  #rho=RHO[ CUR.IND ]
+						  #covar=COVAR[CUR.IND]
+						  #cond=CUR.PHENO[CUR.IND]
+						  
+						  cat( "" , tst.bbreg.c0$pv , tst.bbreg.c1$pv , tst.bbreg$pv , sep='\t' )
 						}
 						
 						# --- print individual counts

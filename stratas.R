@@ -13,7 +13,7 @@ option_list = list(
 	make_option("--local_param", action="store", default=NA, type='character',
               help="Path to local parameter file"),
 	make_option("--window", action="store", default=100e3 , type='integer',
-              help="Window (in bp) for SNPs to test around the peak boundary. [default: %default]"),
+              help="Window (in bp) for SNPs to test around the peak CENTER value. Set to -1 to only test SNPs inside the peak boundary. [default: %default]"),
 	make_option("--perm", action="store", default=0 , type='integer',
               help="# of permutations to shuffle the allele labels (0=off). [default: %default]"),
 	make_option("--perm_cond", action="store", default=0 , type='integer',
@@ -30,6 +30,8 @@ option_list = list(
               help="Also perform a standard binomial test. [default: %default]"),
 	make_option("--bbreg", action="store_true", default=FALSE,
 	            help="Also perform a beta binomial regression, requires library(aod). [default: %default]"),	
+	make_option("--fill_cnv", action="store_true", default=FALSE,
+	            help="Set individuals with missing CNV calls to diploid and \rho=0.01 [default: %default]"),	
 	make_option("--indiv", action="store_true", default=FALSE,
 	            help="Also report the per-individual allele fractions. [default: %default]"),	
 	make_option("--exclude", action="store_true", default=75 , type='integer',
@@ -99,10 +101,12 @@ bbinom.test = function( ref , alt , rho ) {
 
 bbreg.test = function( ref , alt , rho , covar , cond=NULL ) {
     if ( !is.null(cond) ) {
-    	if ( sum(!is.na(covar)) == 0 ) return( list( "pv" = c(NA,NA,NA) ) )
+	ret = list( "pv" = c(NA,NA,NA) )
+    	if ( sum(!is.na(covar)) == 0 ) return( ret )
       df = data.frame( y=alt , n=ref+alt , cond = cond , covar = covar , rho=rho )      
     } else {
-    	if ( sum(!is.na(covar)) == 0 ) return( list( "pv" = c(NA,NA) ) )
+	ret = list( "pv" = c(NA,NA) )
+    	if ( sum(!is.na(covar)) == 0 ) return( ret )
       df = data.frame( y=alt , n=ref+alt , covar = covar , rho=rho )
     }
 
@@ -122,21 +126,22 @@ bbreg.test = function( ref , alt , rho , covar , cond=NULL ) {
     }
     df$phi.q = as.factor(phi.q)
 
-    # need at least two samples to do regression with covariates
-
+    ## wrapping the betabin call in a silent try to supress convergance issues
+    try( ret <- {
     if ( !is.null(cond) ) {
-      # need at least two samples in both conditions 
-      if ( nrow(df) < 2 || cor(df$covar,df$cond) == 1 || min(rle(sort(df$cond))$len) < 2 || sd(df$covar) == 0 || sd(df$cond) == 0 ) return( list( "pv" = c(NA,NA,NA) ) )
-      else reg = betabin( cbind( y , n - y  ) ~ 1 + cond + covar , ~ phi.q , df , fixpar = list( 4:(nq+3) , rho.q ) )
+#      if ( sd(df$covar) == 0 || sd(df$cond) == 0 || cor(df$covar,df$cond) == 1 ) return( ret.null )
+      reg = betabin( cbind( y , n - y  ) ~ 1 + cond + covar , ~ phi.q , df , fixpar = list( 4:(nq+3) , rho.q ) )
     } else {
-      if ( nrow(df) < 2 || sd(df$covar) == 0 ) return( list( "pv" = c(NA,NA) ) )
-      else reg = betabin( cbind( y , n - y  ) ~ 1 + covar , ~ phi.q , df , fixpar = list( 3:(nq+2) , rho.q ) )
+#      if ( sd(df$covar) == 0 ) return( ret.null )
+      reg = betabin( cbind( y , n - y  ) ~ 1 + covar , ~ phi.q , df , fixpar = list( 3:(nq+2) , rho.q ) )
     }
-    
+
+#    if ( sum(!is.na(reg@varparam)) == 0 ) return( ret.null )   
     zscores = coef(reg) / sqrt(diag(vcov( reg )))
     pvals = 2*(pnorm( abs(zscores) , lower.tail=F))
     opt = list( "pv" = pvals )
-  return( opt )
+    opt } , silent = TRUE )
+    return( ret )
 }
 
 cur.chr = unique(mat[,1])
@@ -204,8 +209,12 @@ for ( p in 1:nrow(peaks) ) {
 		m = match( phe$ID , cur.cnv$ID )
 		cur.cnv = cur.cnv[m,]
 		RHO = cur.cnv$PHI
-		RHO[ RHO > MAX.RHO ] = NA
 		COVAR = cur.cnv$CNV
+		if ( opt$fill_cnv ) {
+			RHO[ is.na(RHO) ] = 0.01
+			COVAR[ is.na(COVAR) ] = 0
+		}
+		RHO[ RHO > MAX.RHO ] = NA
 	}
 
 	# collapse reads at this peak
@@ -214,7 +223,7 @@ for ( p in 1:nrow(peaks) ) {
 	cur.i = vector()
 	
 	for ( i in 1:N ) {
-		reads.keep = GENO.H1[cur,i] != GENO.H2[cur,i] & HAPS[[1]][cur,i] >= MIN.COV & HAPS[[2]][cur,i] >= MIN.COV
+		reads.keep = GENO.H1[cur,i] != GENO.H2[cur,i] & HAPS[[1]][cur,i] >= MIN.COV & HAPS[[2]][cur,i] >= MIN.COV & HAPS[[1]][cur,i] + HAPS[[2]][cur,i] > 0
 		reads.keep[reads.keep] <- !c(FALSE, diff(mat[cur, 2][reads.keep]) < opt$exclude)
 		cur.h1 = c( cur.h1 , (HAPS[[1]][cur,i])[reads.keep] )
 		cur.h2 = c( cur.h2 , (HAPS[[2]][cur,i])[reads.keep] )
@@ -293,15 +302,12 @@ for ( p in 1:nrow(peaks) ) {
 						
 						# --- perform beta-binom regression
 						if ( DO.BBREG ) {
-						  tst.bbreg.c0 = bbreg.test( CUR.REF.C0 , CUR.ALT.C0 , RHO[ CUR.IND.C0 ] , COVAR[CUR.IND.C0] )
-						  tst.bbreg.c1 = bbreg.test( CUR.REF.C1 , CUR.ALT.C1 , RHO[ CUR.IND.C1 ] , COVAR[CUR.IND.C1] )
-						  tst.bbreg = bbreg.test( CUR.REF , CUR.ALT , RHO[ CUR.IND ] , COVAR[CUR.IND] , CUR.PHENO[CUR.IND] )
-						  
-						  #ref=CUR.REF
-						  #alt=CUR.ALT
-						  #rho=RHO[ CUR.IND ]
-						  #covar=COVAR[CUR.IND]
-						  #cond=CUR.PHENO[CUR.IND]
+							tst.bbreg.c0 = list("pv" = c(NA,NA) )
+							tst.bbreg.c1 = list("pv" = c(NA,NA) )
+							tst.bbreg = list("pv" = c(NA,NA,NA) )
+if( length(unique(CUR.IND.C0)) > 1 && length(CUR.REF.C0) > 2 && length(unique(RHO[ CUR.IND.C0 ])) > 1 && length(unique(COVAR[CUR.IND.C0])) > 1 ) tst.bbreg.c0 = bbreg.test( CUR.REF.C0 , CUR.ALT.C0 , RHO[ CUR.IND.C0 ] , COVAR[CUR.IND.C0] )
+if( length(unique(CUR.IND.C1)) > 1 && length(CUR.REF.C1) > 2 && length(unique(RHO[ CUR.IND.C1 ])) > 1 && length(unique(COVAR[CUR.IND.C1])) > 1 ) tst.bbreg.c1 = bbreg.test( CUR.REF.C1 , CUR.ALT.C1 , RHO[ CUR.IND.C1 ] , COVAR[CUR.IND.C1] )
+if( length(unique(CUR.IND.C0)) > 1 && length(unique(CUR.IND.C1)) > 1 && length(CUR.REF.C0) > 2 && length(CUR.REF.C1) > 2 && length(unique(RHO[ CUR.IND.C0 ])) > 1 && length(unique(COVAR[CUR.IND.C0])) > 1 && length(unique(RHO[ CUR.IND.C1 ])) > 1 && length(unique(COVAR[CUR.IND.C1])) > 1 ) tst.bbreg = bbreg.test( CUR.REF , CUR.ALT , RHO[ CUR.IND ] , COVAR[CUR.IND] , CUR.PHENO[CUR.IND] )
 						  
 						  cat( "" , tst.bbreg.c0$pv , tst.bbreg.c1$pv , tst.bbreg$pv , sep='\t' )
 						}

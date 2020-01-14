@@ -11,13 +11,15 @@ option_list = list(
 	make_option("--out", action="store", default=NA, type='character',
               help="Path to output files [required]"),
 	make_option("--min_cov", action="store", default=5 , type='integer',
-              help="Minimum number of REF reads and ALT reads to include this site. [default: %default]")              
+              help="Minimum number of REF reads and ALT reads to include this site. [default: %default]"),
+	make_option("--min_snps", action="store", default=100 , type='integer',
+              help="Minimum number of SNPs in a local CNV region needed to estimate parameters. [default: %default]")              
 )
 opt = parse_args(OptionParser(option_list=option_list))
     
 vcf = read.table( opt$inp_counts , as.is=T , header = TRUE)
 # filter heterozygous sites with minimum reads
-vcf = vcf[ (vcf$HAP == "1|0" | vcf$HAP == "0|1") & vcf$REF.READS >= opt$min_cov & vcf$ALT.READS >= opt$min_cov ,]
+vcf = vcf[ (vcf$HAP == "1|0" | vcf$HAP == "0|1") & vcf$REF.READS + vcf$ALT.READS >= opt$min_cov ,]
 
 # put in phase
 al.ref = vcf$REF.READS
@@ -28,7 +30,7 @@ al.ref[switch] = al.alt[switch]
 al.alt[switch] = tmp
 
 if ( !is.na(opt$inp_cnv) ) {
-	cnv = read.table( opt$inp_cnv , head=F , as.is=T)
+	cnv = read.table( opt$inp_cnv , header=TRUE , as.is=T)
 	
 	# local parameters to be estimated
 	phi = rep(NA,nrow(cnv))
@@ -38,7 +40,7 @@ if ( !is.na(opt$inp_cnv) ) {
 	# read through CNVs 
 	for ( c in 1:nrow(cnv) ) {
 		overlap = vcf$CHR == cnv$CHR[c] & vcf$POS >= cnv$P0[c] & vcf$POS <= cnv$P1[c]
-		if ( sum(overlap) > 100 ) {
+		if ( sum(overlap) > opt$min_snps ) {
 			fit = vglm(cbind( al.ref[overlap] , al.alt[overlap] ) ~ 1, betabinomialff, trace = FALSE)
 			cof = Coef(fit)
 			phi[c] = 1/(1+sum(cof))

@@ -61,6 +61,11 @@ if ( !is.na(opt$inp_cnv) ) {
 		if ( sum(colnames(cnv) == "CNV") == 0 ) {
 			stop("ERROR: --group requires a CNV column in --inp_cnv file on which to group\n")
 		}
+		
+		if ( nrow(cnv) < opt$group ) {
+			cat("WARNING: fewer CNVs than --group parameters, using ",nrow(cnv)," groups instead\n",sep='',file=stderr())
+			opt$group = nrow(cnv)
+		}
 
 		if ( opt$group_snp ) {
 			# assign every snp a CNV

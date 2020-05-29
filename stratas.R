@@ -224,13 +224,14 @@ if ( opt$predict ) {
 				
 				tot.pred[ tot.heldout , 2 ] = (x.tot[tot.heldout,] - 1) %*% c.hap
 				tot.pred[ tot.heldout , 3 ] = x.tot.scaled[tot.heldout,] %*% c.combined
+				tot.pred[ tot.heldout , 4 ] = x.tot.scaled[tot.heldout,] %*% c.hap.top
 
 				hap.pred[ hap.heldout , 1 ] = x.hap[hap.heldout,] %*% c.tot
 				hap.pred[ hap.heldout , 5 ] = x.hap[hap.heldout,] %*% c.tot.top
 
 				hap.pred[ hap.heldout , 2 ] = x.hap[hap.heldout,] %*% c.hap
 				hap.pred[ hap.heldout , 3 ] = x.hap.scaled[hap.heldout,] %*% c.combined		
-				hap.pred[ hap.heldout , 4 ] = x.hap.scaled[hap.heldout,] %*% c.hap.top
+				hap.pred[ hap.heldout , 4 ] = x.hap[hap.heldout,] %*% c.hap.top
 				
 				hap.pred[ hap.heldout , 6 ] = x.hap.scaled[hap.heldout,] %*% c.combined.top		
 				tot.pred[ tot.heldout , 6 ] = x.tot.scaled[tot.heldout,] %*% c.combined.top	

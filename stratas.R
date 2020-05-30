@@ -150,12 +150,16 @@ if ( opt$predict ) {
 	
 	pred.marginal = function( x , y , top = TRUE ) {
 		eff.wgt = t( x ) %*% (y) / sqrt( length(y) - 1 )
+		eff.wgt[ is.na(eff.wgt) ] = 0
 		if ( top ) eff.wgt[ - which.max( eff.wgt^2 ) ] = 0
 		return( eff.wgt )
 	}
 
 	hereg = function( x , y ) {
-		K = scale(x) %*% t(scale(x)) / ncol(x)
+		sx = scale(x)
+		sx = sx[ , apply( is.na(sx) , 2 , sum ) == 0 , drop=F ]
+
+		K = sx %*% t( sx ) / ncol(sx)
 		phe.prod  = scale(y) %*% t(scale(y))
 		diag(phe.prod) = NA
 		vec.phe = c(phe.prod[lower.tri(phe.prod)])
@@ -185,10 +189,10 @@ if ( opt$predict ) {
 		
 		# cross validation
 		tot.ord = sample(1:nrow(x.tot))
-		tot.cut = floor(seq(1,length(tot.ord),length.out=(folds+1)))
+		tot.cut = floor(seq(0,length(tot.ord),length.out=(folds+1)))
 
 		hap.ord = sample(1:nrow(x.hap))
-		hap.cut = floor(seq(1,length(hap.ord),length.out=(folds+1)))
+		hap.cut = floor(seq(0,length(hap.ord),length.out=(folds+1)))
 
 		models = c("lasso","lasso.as","lasso.plasma","top1.as","top1.qtl","top1")
 		n.models = length(models)
@@ -200,50 +204,57 @@ if ( opt$predict ) {
 		x.hap.scaled = scale(x.hap)
 		y.tot.scaled = scale(y.tot)
 		y.hap.scaled = scale(y.hap)
+		
+		x.hap.scaled[ is.na(x.hap.scaled) ] = 0
 
 		for ( i in 2:(folds+1) ) {
-			batch = tot.cut[i-1]:tot.cut[i]
+			batch = (tot.cut[i-1]+1):tot.cut[i]
 			tot.heldout = tot.ord[ batch ]
 			c.tot = pred.lasso( x = x.tot[-tot.heldout,] , y = y.tot.scaled[-tot.heldout] )
 			tot.pred[ tot.heldout , 1 ] = x.tot[tot.heldout,] %*% c.tot
+			c.tot.top = pred.marginal( x = x.tot.scaled[-tot.heldout,] , y = y.tot.scaled[-tot.heldout] , top=FALSE )
 			
-			c.tot.top = pred.marginal( x = x.tot.scaled[-tot.heldout,] , y = y.tot.scaled[-tot.heldout] )
-			tot.pred[ tot.heldout , 5 ] = x.tot.scaled[tot.heldout,] %*% c.tot.top
-
 			if ( sum(hap.keep) >= 10 ) {
-				batch = hap.cut[i-1]:hap.cut[i]
+				batch = (hap.cut[i-1]+1):hap.cut[i]
 				hap.heldout = hap.ord[ batch ]
 				
 				c.hap = pred.lasso( x = x.hap[-hap.heldout,] , y = y.hap[-hap.heldout] , w = sqrt(hap.wgt[-hap.heldout]) )
-				c.hap.top = pred.marginal( x = x.hap.scaled[-hap.heldout,] , y = y.hap.scaled[-hap.heldout] )
+				c.hap.top = pred.marginal( x = x.hap.scaled[-hap.heldout,] , y = y.hap.scaled[-hap.heldout] , top=FALSE )
 
 				c.combined = pred.combined( x1 = x.tot.scaled[-tot.heldout,] , x2 = x.hap.scaled[-hap.heldout,] , y1 = y.tot.scaled[-tot.heldout] , y2 = y.hap.scaled[-hap.heldout] )
 
-				c.combined.top = (pred.marginal(x.tot.scaled[-tot.heldout,],y.tot.scaled[-tot.heldout],top=FALSE) + pred.marginal(x.hap.scaled[-hap.heldout,],y.hap.scaled[-hap.heldout],top=FALSE)) / sqrt(2)
+				# combined statistic
+				c.combined.top = ( c.tot.top + c.hap.top ) / sqrt(2)
+				# remove cases where either test failed
+				c.combined.top[ c.tot.top == 0 | c.hap.top == 0 ] = 0
+				# get the max QTL
 				c.combined.top[ - which.max( c.combined.top^2 ) ] = 0
+				c.hap.top[ - which.max( c.hap.top^2 ) ] = 0
 				
 				tot.pred[ tot.heldout , 2 ] = (x.tot[tot.heldout,] - 1) %*% c.hap
 				tot.pred[ tot.heldout , 3 ] = x.tot.scaled[tot.heldout,] %*% c.combined
 				tot.pred[ tot.heldout , 4 ] = x.tot.scaled[tot.heldout,] %*% c.hap.top
 
 				hap.pred[ hap.heldout , 1 ] = x.hap[hap.heldout,] %*% c.tot
-				hap.pred[ hap.heldout , 5 ] = x.hap[hap.heldout,] %*% c.tot.top
-
 				hap.pred[ hap.heldout , 2 ] = x.hap[hap.heldout,] %*% c.hap
 				hap.pred[ hap.heldout , 3 ] = x.hap.scaled[hap.heldout,] %*% c.combined		
-				hap.pred[ hap.heldout , 4 ] = x.hap[hap.heldout,] %*% c.hap.top
+				hap.pred[ hap.heldout , 4 ] = x.hap.scaled[hap.heldout,] %*% c.hap.top
 				
 				hap.pred[ hap.heldout , 6 ] = x.hap.scaled[hap.heldout,] %*% c.combined.top		
 				tot.pred[ tot.heldout , 6 ] = x.tot.scaled[tot.heldout,] %*% c.combined.top	
 			}
+			
+			c.tot.top[ - which.max( c.tot.top^2 ) ] = 0
+			tot.pred[ tot.heldout , 5 ] = x.tot.scaled[tot.heldout,] %*% c.tot.top
+			hap.pred[ hap.heldout , 5 ] = x.hap[hap.heldout,] %*% c.tot.top
 		}
 		
 		cv.performance = matrix( NA , nrow=4 , ncol=n.models )
 		rownames(cv.performance) = c("hap.rsq","hap.pval","rsq","pval")
 		colnames(cv.performance) = models
 		for ( i in 1:n.models ) {
-            try( { tst = cor.test(hap.pred[,i],y.hap); cv.performance[1,i] = tst$est^2 - 1/sum(hap.keep); cv.performance[2,i] = tst$p.value } , silent=T )
-            try( { tst = cor.test(tot.pred[,i],y.tot); cv.performance[3,i] = tst$est^2 - 1/sum(tot.keep); cv.performance[4,i] = tst$p.value } , silent=T )
+			try( { tst = cor.test(hap.pred[,i],y.hap); cv.performance[1,i] = tst$est^2 - 1/sum(hap.keep); cv.performance[2,i] = tst$p.value } , silent=T )
+			try( { tst = cor.test(tot.pred[,i],y.tot); cv.performance[3,i] = tst$est^2 - 1/sum(tot.keep); cv.performance[4,i] = tst$p.value } , silent=T )
 		}
 
 		# final training
@@ -253,7 +264,7 @@ if ( opt$predict ) {
 		wgt.matrix[,3] = pred.combined( x1 = x.tot.scaled , x2 = x.hap.scaled , y1 = y.tot.scaled , y2 = y.hap.scaled )
 		wgt.matrix[,4] = pred.marginal( x = x.hap.scaled , y = y.hap.scaled , top=FALSE )
 		wgt.matrix[,5] = pred.marginal( x = x.tot.scaled , y = y.tot.scaled , top=FALSE )
-		wgt.matrix[,6] = (pred.marginal(x.tot.scaled,y.tot.scaled,top=FALSE) + pred.marginal(x.hap.scaled,y.hap.scaled,top=FALSE)) / sqrt(2)
+		wgt.matrix[,6] = (wgt.matrix[,4] + wgt.matrix[,5]) / sqrt(2)
 		
 		rownames( wgt.matrix ) = snps[,2]
 		colnames( wgt.matrix ) = models
@@ -263,10 +274,13 @@ if ( opt$predict ) {
 		N.tot = N.as + N.qt
 		
 		# heritability
-		hsq.as = hereg( x.hap , y.hap )
-		hsq.qtl = hereg( x.tot , y.tot )
+		hsq.as = NA
+		hsq.qtl = NA
 		hsq = 0		
 		hsq.pv = 0
+		
+		try( {hsq.as = hereg( x.hap , y.hap )} , silent=TRUE )
+		try( {hsq.qtl = hereg( x.tot , y.tot )} , silent=TRUE )
 		# ---
 		
 		save( wgt.matrix , snps , cv.performance , hsq, hsq.pv , hsq.as , hsq.qtl ,  N.tot , N.as , N.qt , file = paste( "WEIGHTS/" , output , ".wgt.RDat" , sep='' ) )
@@ -462,9 +476,11 @@ if ( ! opt$predict_only ) {
 	cat('\n')
 }
 
+ALL.MAF = apply( (GENO.H1 + GENO.H2)/2,1,mean)
+
 for ( p in 1:nrow(peaks) ) {
 	cur = mat[,1] == peaks$CHR[p] & mat[,2] >= peaks$P0[p] & mat[,2] <= peaks$P1[p]
-	if(sum(cur,is.na=T) == 0 ) next()
+	if(sum(cur,na.rm=T) == 0 ) next
 
 	if ( !is.na(opt$local_param) )  {
 		cur.cnv = cnv.local[ cnv.local$CHR == peaks$CHR[p] & cnv.local$P0 < peaks$P0[p] & cnv.local$P1 > peaks$P1[p] , ]
@@ -508,6 +524,7 @@ for ( p in 1:nrow(peaks) ) {
 		} else {
 			cur.snp = mat[,1] == peaks$CHR[p] & mat[,2] >= peaks$CENTER[p] - PAR.WIN & mat[,2] <= peaks$CENTER[p] + PAR.WIN
 		}
+		cur.snp = cur.snp & ALL.MAF > MIN.MAF & ALL.MAF < (1-MIN.MAF)
 		
 		if ( opt$predict ) {
 			cur.pred.snp = cur.snp & predict_snps

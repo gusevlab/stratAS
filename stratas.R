@@ -21,7 +21,7 @@ option_list = list(
 	make_option("--predict_only", action="store_true", default=FALSE,
               help="Skip all testing steps"),
 	make_option("--total_matrix", action="store", default=NA, type='character',
-              help="Path to matrix of total activity, enables the linear model"),
+              help="Path to matrix of total activity, enables the linear model. Note: if --local_param is on, then CNV is included as covariate."),
 	make_option("--covar", action="store", default=NA, type='character',
               help="Path to covariates for total activity"),
 	make_option("--window", action="store", default=100e3 , type='integer',
@@ -42,26 +42,30 @@ option_list = list(
               help="Maximum local/global over-dispersion parameter for which to include individual in test. [default: %default]"),
 	make_option("--binom", action="store_true", default=FALSE,
               help="Also perform a standard binomial test. [default: %default]"),
-	make_option("--bbreg", action="store_true", default=FALSE,
+	make_option("--mbased", action="store_true", default=FALSE,
+              help="Also perform the MBASED test for differences (requires MBASED libraries). [default: %default]"),
+    make_option("--bbreg", action="store_true", default=FALSE,
 	            help="Also perform a beta binomial regression, requires library(aod). [default: %default]"),	
 	make_option("--fill_cnv", action="store_true", default=FALSE,
 	            help="Set individuals with missing CNV calls to diploid and \rho=0.01 [default: %default]"),	
 	make_option("--indiv", action="store_true", default=FALSE,
 	            help="Also report the per-individual allele fractions. [default: %default]"),
+	make_option("--collapse_reads", action="store_true", default=FALSE,
+	            help="Merge all sites for each individual prior to analysis. [default: %default]"),
 	make_option("--sim", action="store_true", default=FALSE,
-	            help="Simulate a null model and test. [default: %default]"),	            
+	            help="Simulate imbalance and test. Allelic-fraction specified by --sim_af. [default: %default]"),	            
 	make_option("--sim_cnv", action="store_true", default=FALSE,
 	            help="Add local CNVs to simulations. [default: %default]"),
 	make_option("--sim_cnv_allelic", action="store_true", default=FALSE,
-	            help="CNVs always impact one allele. [default: %default]"),	            
-	make_option("--sim_af", action="store", default=0.50 , type='double',
-              help="Specify the allelic frequency to simulate. [default: %default]"),
+	            help="CNVs always impact one allele. [default: %default]"),
+	make_option("--sim_af1", action="store", default=0.50 , type='double',
+              help="Specify the allelic fraction for CONDITION==1. [default: %default]"),              
+	make_option("--sim_af0", action="store", default=0.50 , type='double',
+              help="Specify the allelic fraction for CONDITION==0. [default: %default]"), 
 	make_option("--cond_cnv_mean", action="store_true", default=FALSE,
-	            help="Include the CNV mean in the test (requires --bbreg). [default: %default]"),	            
-	make_option("--cnv_cutoff", action="store", default=0.01 , type='double',
+	            help="Use MU as the covariate for BBREG, otherwise uses CNV as the covariate (requires --bbreg). [default: %default]"),	            
+	make_option("--min_cnv_round", action="store", default=NA , type='double',
               help="Absolute CNV values below this cutoff get set to zero. [default: %default]"),
-	make_option("--print_cnv_cutoff", action="store", default=NA , type='double',
-              help="Output what fraction of sites have an absolute CNV value above this cutoff. [default: %default]"),
 	make_option("--mask_cnv_cutoff", action="store", default=NA , type='double',
               help="Mask out any sites that have an absolute CNV value above this cutoff (NA = no masking). [default: %default]"),
 	make_option("--exclude", action="store", default=75 , type='integer',
@@ -83,8 +87,8 @@ MAX.RHO = opt$max_rho
 DO.BINOM = opt$binom
 DO.INDIV = opt$indiv
 DO.BBREG = opt$bbreg
+DO.MBASED = opt$mbased
 DO.TOTAL = FALSE
-DO.PRINT_CUTOFF = !is.na(opt$print_cnv_cutoff)
 
 message("-----------------------------------")
 message("stratAS")
@@ -97,6 +101,10 @@ if ( DO.BBREG ) {
   if ( is.na(opt$local_param) ) {
     stop("ERROR: --bbreg requires --local_param file\n")
   }
+}
+
+if ( DO.MBASED ) {
+  library("MBASED")
 }
 
 if ( NUM.PERM > 0 && NUM.PERM_COND > 0 ) {
@@ -281,6 +289,8 @@ bbinom.test = function( ref , alt , rho ) {
 	return( opt )
 }
 
+# ref = CUR.REF.C0; alt = CUR.ALT.C0; rho = RHO[ CUR.IND.C0 ]; covar = COVAR.C0 
+
 bbreg.test = function( ref , alt , rho , covar , cond=NULL ) {
     if ( !is.null(cond) ) {
 	ret = list( "pv" = c(NA,NA,NA) )
@@ -314,16 +324,11 @@ bbreg.test = function( ref , alt , rho , covar , cond=NULL ) {
 #      if ( sd(df$covar) == 0 || sd(df$cond) == 0 || cor(df$covar,df$cond) == 1 ) return( ret.null )
 
 	  # test each marginal term to ensure convergence
-      reg.1 = betabin( cbind( y , n - y ) ~ 1 , ~ phi.q , df , fixpar = list( 2:(nq+1) , rho.q ) )
       reg.2 = betabin( cbind( y , n - y ) ~ 1 + cond , ~ phi.q , df , fixpar = list( 3:(nq+2) , rho.q ) )
       reg.3 = betabin( cbind( y , n - y ) ~ 1 + covar , ~ phi.q , df , fixpar = list( 3:(nq+2) , rho.q ) )
-
       reg = betabin( cbind( y , n - y ) ~ 1 + cond + covar , ~ phi.q , df , fixpar = list( 4:(nq+3) , rho.q ) )
     } else {
 #      if ( sd(df$covar) == 0 ) return( ret.null )
-
-	  # test each marginal term to ensure convergence
-      reg.1 = betabin( cbind( y , n - y  ) ~ 1 , ~ phi.q , df , fixpar = list( 4:(nq+3) , rho.q ) )
       reg = betabin( cbind( y , n - y  ) ~ 1 + covar , ~ phi.q , df , fixpar = list( 3:(nq+2) , rho.q ) )
     }
 
@@ -333,6 +338,136 @@ bbreg.test = function( ref , alt , rho , covar , cond=NULL ) {
     opt = list( "pv" = pvals )
     opt } , silent = TRUE , warning = function(w){ return(ret) } , error = function(e) { return(ret) } )
     return( ret )
+}
+
+mbased.test = function( CUR.REF.C0 , CUR.ALT.C0 , CUR.REF.C1 , CUR.ALT.C1 , RHO.C0 , RHO.C1 , MAX.SITES = NULL ) {
+
+	MB.N = max(length(CUR.REF.C0),length(CUR.REF.C1))
+
+	MB.REF.C0 = rep(0,MB.N)
+	MB.REF.C1 = MB.REF.C0
+	MB.ALT.C0 = MB.REF.C0
+	MB.ALT.C1 = MB.REF.C0
+	MB.RHO.C0 = MB.REF.C0
+	MB.RHO.C1 = MB.REF.C0
+
+	MB.REF.C0[ 1:length(CUR.REF.C0) ] = CUR.REF.C0
+	MB.REF.C1[ 1:length(CUR.REF.C1) ] = CUR.REF.C1
+	MB.ALT.C0[ 1:length(CUR.ALT.C0) ] = CUR.ALT.C0
+	MB.ALT.C1[ 1:length(CUR.ALT.C1) ] = CUR.ALT.C1
+	MB.RHO.C0[ 1:length(RHO.C0) ] = RHO.C0
+	MB.RHO.C1[ 1:length(RHO.C1) ] = RHO.C1
+
+	if ( !is.null( MAX.SITES ) ) {
+	MB.N = min( MAX.SITES , MB.N )
+	MB.REF.C0 = MB.REF.C0[1:MB.N]
+	MB.REF.C1 = MB.REF.C1[1:MB.N]
+	MB.ALT.C0 = MB.ALT.C0[1:MB.N]
+	MB.ALT.C1 = MB.ALT.C1[1:MB.N]
+	MB.RHO.C0 = MB.RHO.C0[1:MB.N]
+	MB.RHO.C1 = MB.RHO.C1[1:MB.N]
+	}
+
+	mySNVs_2s <- GRanges(
+	  seqnames=rep("chr1",MB.N),
+	  ranges=IRanges(start=1:MB.N, width=1),
+	  aseID=rep("gene1",MB.N),
+	  allele1=rep("A",MB.N),
+	  allele2=rep("T",MB.N)
+	)
+	names(mySNVs_2s) <- paste( rep("gene1_SNV",MB.N) , 1:MB.N , sep='')
+
+	## create input RangedSummarizedExperiment object
+	myTumorNormalExample <- SummarizedExperiment(
+	  assays=list(
+		lociAllele1Counts=matrix(
+		  c(
+			MB.REF.C0,
+			MB.REF.C1
+		  ),
+		  ncol=2,
+		  dimnames=list(
+		   names(mySNVs_2s), 
+		   c('tumor', 'normal')
+		  )
+		),
+		lociAllele2Counts=matrix(
+		  c(
+			MB.ALT.C0,
+			MB.ALT.C1
+		  ),
+		  ncol=2, 
+		  dimnames=list(
+		   names(mySNVs_2s), 
+		   c('tumor', 'normal')
+		  )
+		),
+		lociCountsDispersions=matrix(
+		  c( MB.RHO.C0 , MB.RHO.C1 ),
+		  ncol=2, 
+		  dimnames=list(
+		   names(mySNVs_2s), 
+		   c('tumor', 'normal')
+		  )
+		)   
+	  ),
+	  rowRanges=mySNVs_2s
+	)
+
+	ASEresults_2s <- runMBASED(
+	  ASESummarizedExperiment=myTumorNormalExample,
+	  isPhased=TRUE,
+	  numSim=0
+	)
+	ret = list( "pv1" = assays(ASEresults_2s)$pValueASE , "min1" = assays(ASEresults_2s)$majorAlleleFrequencyDifference )
+	
+	# ---
+	myTumorNormalExample <- SummarizedExperiment(
+	  assays=list(
+		lociAllele1Counts=matrix(
+		  c(
+			MB.REF.C1,
+			MB.REF.C0
+		  ),
+		  ncol=2,
+		  dimnames=list(
+		   names(mySNVs_2s), 
+		   c('tumor', 'normal')
+		  )
+		),
+		lociAllele2Counts=matrix(
+		  c(
+			MB.ALT.C1,
+			MB.ALT.C0
+		  ),
+		  ncol=2, 
+		  dimnames=list(
+		   names(mySNVs_2s), 
+		   c('tumor', 'normal')
+		  )
+		),
+		lociCountsDispersions=matrix(
+		  c( MB.RHO.C1 , MB.RHO.C0 ),
+		  ncol=2, 
+		  dimnames=list(
+		   names(mySNVs_2s), 
+		   c('tumor', 'normal')
+		  )
+		)   
+	  ),
+	  rowRanges=mySNVs_2s
+	)
+
+	ASEresults_2s <- runMBASED(
+	  ASESummarizedExperiment=myTumorNormalExample,
+	  isPhased=TRUE,
+	  numSim=0
+	)
+	
+	ret$pv2 = assays(ASEresults_2s)$pValueASE
+	ret$min2 = assays(ASEresults_2s)$majorAlleleFrequencyDifference
+	
+	return( ret )
 }
 
 cur.chr = unique(mat[,1])
@@ -385,19 +520,16 @@ if ( !is.na(opt$covar) ) {
 
 options( digits = 4 )
 
-RHO = RHO.ALL
-RHO[ RHO > MAX.RHO ] = NA
-
 COL.HEADER = c("CHR","POS","RSID","P0","P1","NAME","CENTER","N.HET","N.READS","ALL.AF","ALL.BBINOM.P","C0.AF","C0.BBINOM.P","C1.AF","C1.BBINOM.P","DIFF.BBINOM.P")
-COL.HEADER.PRINT_CUTOFF = c("PCT.CNV.C0","PCT.CNV.C1")
 COL.HEADER.BINOM = c("ALL.BINOM.P","ALL.C0.BINOM.P","ALL.C1.BINOM.P","FISHER.OR","FISHER.DIFF.P")
 COL.HEADER.INDIV = c("IND.C0","IND.C0.COUNT.REF","IND.C0.COUNT.ALT","IND.C1","IND.C1.COUNT.REF","IND.C1.COUNT.ALT")
 COL.HEADER.BBREG = c("C0.BBREG.P","C0.CNV.BBREG.P","C1.BBREG.P","C1.CNV.BBREG.P","ALL.BBREG.P","DIFF.BBREG.P","DIFF.CNV.BBREG.P")
 COL.HEADER.TOTAL = c("C0.TOTAL.Z","C0.TOTAL.P","C1.TOTAL.Z","C1.TOTAL.P","DIFF.TOTAL.Z","DIFF.TOTAL.P")
+COL.HEADER.MBASED = c("DIFF.MBASED1.P","DIFF.MBASED1.AF","DIFF.MBASED2.P","DIFF.MBASED2.AF")
 
 HEAD = COL.HEADER
-if ( DO.PRINT_CUTOFF ) HEAD = c(HEAD,COL.HEADER.PRINT_CUTOFF)
 if ( DO.BINOM ) HEAD = c(HEAD,COL.HEADER.BINOM)
+if ( DO.MBASED ) HEAD = c(HEAD,COL.HEADER.MBASED)
 if ( DO.BBREG ) HEAD = c(HEAD,COL.HEADER.BBREG)
 if ( DO.INDIV ) HEAD = c(HEAD,COL.HEADER.INDIV)
 if ( DO.TOTAL ) HEAD = c(HEAD,COL.HEADER.TOTAL)
@@ -431,19 +563,32 @@ for ( p in 1:nrow(peaks) ) {
 	if(sum(cur) == 0 ) next()
 
 	if ( !is.na(opt$local_param) )  {
-		cur.cnv = cnv.local[ cnv.local$CHR == peaks$CHR[p] & cnv.local$P0 < peaks$P0[p] & cnv.local$P1 > peaks$P1[p] , ]
-		m = match( phe$ID , cur.cnv$ID )
-		cur.cnv = cur.cnv[m,]
-		RHO = cur.cnv$PHI
-		COVAR = cur.cnv$CNV
+		cnv.region = cnv.local[ cnv.local$CHR == peaks$CHR[p] & cnv.local$P0 < peaks$P0[p] & cnv.local$P1 > peaks$P1[p] , ]
+		m = match( phe$ID , cnv.region$ID )
+		cnv.region = cnv.region[m,]
+		CUR.RHO = cnv.region$PHI
+		CUR.CNV = cnv.region$CNV
+		CUR.CNV_MU = cnv.region$MU
+		
 		if ( opt$fill_cnv ) {
-			RHO[ is.na(RHO) ] = 0.01
-			COVAR[ is.na(COVAR) ] = 0
+			CUR.RHO[ is.na(CUR.RHO) ] = 0.01
+			CUR.CNV[ is.na(CUR.CNV) ] = 0
+			CUR.CNV_MU[ is.na(CUR.CNV) ] = 0.5
 		}
-		RHO[ RHO > MAX.RHO ] = NA
-		if ( !is.na(opt$mask_cnv_cutoff) ) COVAR[ abs(COVAR) > opt$mask_cnv_cutoff ] = NA
-
+		if ( !is.na(opt$mask_cnv_cutoff) ) {
+			mask = abs(CUR.CNV) > opt$mask_cnv_cutoff
+			CUR.CNV[ mask ] = NA
+			CUR.RHO[ mask ] = NA
+			CUR.CNV_MU[ mask ] = NA
+		}
+		if ( !is.na(opt$min_cnv_round) ) {
+			mask = abs(CUR.CNV) < opt$min_cnv_round
+			CUR.CNV[ mask ] = 0
+		}
+	} else {
+		CUR.RHO = RHO.ALL
 	}
+	CUR.RHO[ CUR.RHO > MAX.RHO ] = NA
 
 	# collapse reads at this peak
 	cur.h1 = vector()
@@ -494,8 +639,7 @@ for ( p in 1:nrow(peaks) ) {
 		
 		for ( s in which(cur.snp) ) {
 			# restrict to hets
-			if ( !is.na(opt$local_param) ) HET = GENO.H1[s,] != GENO.H2[s,] & !is.na(RHO) & !is.na(COVAR)
-			else HET = GENO.H1[s,] != GENO.H2[s,] & !is.na(RHO)
+			HET = GENO.H1[s,] != GENO.H2[s,] & !is.na(CUR.RHO)
 
 			if ( sum(HET) > MIN.HET*N ) {
 				# collect REF/ALT heterozygous haplotypes
@@ -504,42 +648,15 @@ for ( p in 1:nrow(peaks) ) {
 				CUR.REF = c( cur.h1[ !is.na(m1) ] , cur.h2[ !is.na(m2) ])
 				CUR.ALT = c( cur.h2[ !is.na(m1) ] , cur.h1[ !is.na(m2) ])
 				CUR.IND = c( cur.i[ !is.na(m1) ] , cur.i[ !is.na(m2)] )
-
-				# specify the direction for the CNV offset
-				CUR.CNV_MEAN = c( cur.cnv$MU[ cur.i[ !is.na(m1) ] ] - 0.5 , 0.5 - cur.cnv$MU[ cur.i[ !is.na(m2) ] ] )
-				if ( opt$fill_cnv ) CUR.CNV_MEAN[ is.na(CUR.CNV_MEAN) ] = 0
+						
+				# re-orient the CNV mean
+				if ( !is.na(opt$local_param) ) {
+					CUR.ALLELE.CNV_MU = c( CUR.CNV_MU[ cur.i[ !is.na(m1) ] ] - 0.5 , 0.5 - CUR.CNV_MU[ cur.i[ !is.na(m2) ] ] )
+				}
 				
 				if ( sum(CUR.REF) + sum(CUR.ALT) > 0 ) {
-					# simulation
-					if ( opt$sim ) {
-						sim.mu = rep( opt$sim_af , length(CUR.IND))
-						
-						if ( opt$sim_cnv ) {
-							# alternative read count (relative to 1)
-							sim.alt.ct = sim.mu / (1 - sim.mu)
-							# reference read count (1 at baseline)
-							sim.ref.ct = rep(1,length(sim.alt.ct))
-							
-							# cnv multiplier
-							if ( opt$sim_cnv_allelic ) {
-								sim.cnv.ct = 2 * ( 2^( abs(COVAR[CUR.IND]) ) ) - 1
-							} else {
-								sim.cnv.ct = 2 * ( 2^( COVAR[CUR.IND] ) ) - 1
-							}							
-							
-							# total fraction = expected alt count * cnv multiplier
-							sim.mu = (sim.alt.ct * sim.cnv.ct) / (sim.ref.ct + sim.alt.ct*sim.cnv.ct)
-						}
-						sim.mu[ sim.mu > 1 ] = 1
-						sim.mu[ sim.mu < 0 ] = 0						
-						cur.sim = bb.simulate( CUR.REF + CUR.ALT , RHO[CUR.IND] , sim.mu )
-						CUR.REF = cur.sim$REF
-						CUR.ALT = cur.sim$ALT
-					}
-					
 					for ( perm in 0:max(NUM.PERM,NUM.PERM_COND) ) {
-					  
-					  CUR.PHENO = PHENO
+					  	CUR.PHENO = PHENO
 					  
 						if ( perm > 0 ) {
 						  # randomly swap REF/ALT alleles
@@ -555,31 +672,75 @@ for ( p in 1:nrow(peaks) ) {
 						  }
 						}
 
-						m = !is.na(match( CUR.IND , which(CUR.PHENO==0) ))
-						CUR.REF.C0 = CUR.REF[m]
-						CUR.ALT.C0 = CUR.ALT[m]
-						CUR.IND.C0 = CUR.IND[m]
-						CUR.CNV_MEAN.C0 = CUR.CNV_MEAN[m]
+						m.C0 = !is.na(match( CUR.IND , which(CUR.PHENO==0) ))
+						m.C1 = !is.na(match( CUR.IND , which(CUR.PHENO==1) ))
 
-						m = !is.na(match( CUR.IND , which(CUR.PHENO==1) ))
-						CUR.REF.C1 = CUR.REF[m]
-						CUR.ALT.C1 = CUR.ALT[m]
-						CUR.IND.C1 = CUR.IND[m]		
-						CUR.CNV_MEAN.C1 = CUR.CNV_MEAN[m]
+						# --- simulation
+						if ( opt$sim ) {
+							sim.mu = rep( 0.5 , length(CUR.IND) )
+							sim.mu[ m.C0 ] = opt$sim_af0
+							sim.mu[ m.C1 ] = opt$sim_af1
+
+							if ( opt$sim_cnv ) {
+								# alternative read count (relative to 1)
+								sim.alt.ct = sim.mu / (1 - sim.mu)
+								# reference read count (1 at baseline)
+								sim.ref.ct = rep(1,length(sim.alt.ct))
+	
+								# cnv multiplier
+								if ( opt$sim_cnv_allelic ) {
+									sim.cnv.ct = 2 * ( 2^( abs(CUR.CNV[CUR.IND]) ) ) - 1
+								} else {
+									sim.cnv.ct = 2 * ( 2^( CUR.CNV[CUR.IND] ) ) - 1
+								}							
+	
+								# total fraction = expected alt count * cnv multiplier
+								sim.mu = (sim.alt.ct * sim.cnv.ct) / (sim.ref.ct + sim.alt.ct*sim.cnv.ct)
+							}
+							sim.mu[ sim.mu > 1 ] = 1
+							sim.mu[ sim.mu < 0 ] = 0						
+							cur.sim = bb.simulate( CUR.REF + CUR.ALT , CUR.RHO[CUR.IND] , sim.mu )
+							CUR.REF = cur.sim$REF
+							CUR.ALT = cur.sim$ALT
+						}
+
+						# merge calls from the same individual
+						if ( opt$collapse_reads ) {
+							NEW.REF = vector()
+							NEW.ALT = vector()
+							NEW.IND = vector()
+							for ( i in unique(CUR.IND) ) {
+								NEW.IND = c(NEW.IND,i)
+								NEW.REF = c(NEW.REF,sum(CUR.REF[CUR.IND==i]))
+								NEW.ALT = c(NEW.ALT,sum(CUR.ALT[CUR.IND==i]))
+							}
+							CUR.REF = NEW.REF
+							CUR.ALT = NEW.ALT
+							CUR.IND = NEW.IND
+							
+							m.C0 = !is.na(match( CUR.IND , which(CUR.PHENO==0) ))
+							m.C1 = !is.na(match( CUR.IND , which(CUR.PHENO==1) ))
+						}
+				
+						CUR.REF.C0 = CUR.REF[m.C0]
+						CUR.ALT.C0 = CUR.ALT[m.C0]
+						CUR.IND.C0 = CUR.IND[m.C0]
+
+						CUR.REF.C1 = CUR.REF[m.C1]
+						CUR.ALT.C1 = CUR.ALT[m.C1]
+						CUR.IND.C1 = CUR.IND[m.C1]
 						
 						# --- perform beta-binomial test
-						tst.bbinom.C0 = bbinom.test( CUR.REF.C0 , CUR.ALT.C0 , RHO[CUR.IND.C0] )
-						tst.bbinom.C1 = bbinom.test( CUR.REF.C1 , CUR.ALT.C1 , RHO[CUR.IND.C1] )
-						tst.bbinom.ALL = bbinom.test( CUR.REF , CUR.ALT , RHO[CUR.IND] )
+						tst.bbinom.C0 = bbinom.test( CUR.REF.C0 , CUR.ALT.C0 , CUR.RHO[CUR.IND.C0] )
+						tst.bbinom.C1 = bbinom.test( CUR.REF.C1 , CUR.ALT.C1 , CUR.RHO[CUR.IND.C1] )
+						tst.bbinom.ALL = bbinom.test( CUR.REF , CUR.ALT , CUR.RHO[CUR.IND] )
 						lrt.BOTH = 2 * (tst.bbinom.C0$objective + tst.bbinom.C1$objective - tst.bbinom.ALL$objective)
 						pv.BOTH = pchisq( abs(lrt.BOTH) , df=1 , lower.tail=F )			
 
 						# --- print main output
+						if ( perm > 0 ) cat( "PERM_" , perm , ":" , sep='' )
 						cat( unlist(mat[s,1:3]) , unlist(peaks[p,c("P0","P1","NAME","CENTER")]) , sum(HET) , sum(CUR.REF) + sum(CUR.ALT) , tst.bbinom.ALL$min , tst.bbinom.ALL$pv , tst.bbinom.C0$min , tst.bbinom.C0$pv , tst.bbinom.C1$min , tst.bbinom.C1$pv , pv.BOTH , sep='\t' )
-						
-						if ( DO.PRINT_CUTOFF ) {
-							cat( "" , mean(abs(COVAR[CUR.IND.C0]) > opt$print_cnv_cutoff) , mean(abs(COVAR[CUR.IND.C1]) > opt$print_cnv_cutoff) ,  sep='\t' )
-						}
+
 						# --- perform binomial test
 						if ( DO.BINOM ) {
 							tst.binom = binom.test( sum(CUR.ALT),sum(CUR.REF)+sum(CUR.ALT) )
@@ -591,47 +752,81 @@ for ( p in 1:nrow(peaks) ) {
 							cat( "" , tst.binom$p.value ,  tst.binom.C0$p.value , tst.binom.C1$p.value , tst.fisher$est , tst.fisher$p.value , sep='\t' )
 						}
 						
-						# --- perform beta-binom regression
-						# round off low CNVs for numerical stability
-						COVAR[ abs(COVAR) < opt$cnv_cutoff ] = 0
-
-						if ( DO.BBREG ) {							
+						# --- perform MBASED test
+						if ( DO.MBASED ) {
+							tst.mbased = list( "pv1" = NA , "pv2" = NA , "min1" = NA , "min2" = NA )
+							try( { tst.mbased = mbased.test( CUR.REF.C0 , CUR.ALT.C0 , CUR.REF.C1 , CUR.ALT.C1 , CUR.RHO[CUR.IND.C0] , CUR.RHO[CUR.IND.C1] ) } , silent=T )
+							cat( "" , tst.mbased$min1 , tst.mbased$pv1 , tst.mbased$min2 , tst.mbased$pv2 , sep='\t' )
+						}
+							
+						# --- perform beta-binom regression							
+						if ( DO.BBREG ) {
+							# --- set up covariates for BBREG		
+							if ( opt$cond_cnv_mean ) {
+								# mean is already computed per allele
+								BBREG.COVAR.C0 = CUR.ALLELE.CNV_MU[m.C0]
+								BBREG.COVAR.C1 = CUR.ALLELE.CNV_MU[m.C1]
+								BBREG.COVAR = CUR.ALLELE.CNV_MU
+							} else {	
+								# CNV is already computed per individual						
+								BBREG.COVAR.C0 = CUR.CNV[CUR.IND.C0]
+								BBREG.COVAR.C1 = CUR.CNV[CUR.IND.C1]
+								BBREG.COVAR = CUR.CNV[CUR.IND]					
+							}
+							
 							tst.bbreg.c0 = list("pv" = c(NA,NA) )
 							tst.bbreg.c1 = list("pv" = c(NA,NA) )
 							tst.bbreg = list("pv" = c(NA,NA,NA) )
 							
-							if ( opt$cond_cnv_mean ) {
-								COVAR.C0 = CUR.CNV_MEAN.C0
-								COVAR.C1 = CUR.CNV_MEAN.C1
-								COVAR.C = CUR.CNV_MEAN
-							} else {
-								COVAR.C0 = COVAR[CUR.IND.C0]
-								COVAR.C1 = COVAR[CUR.IND.C1]
-								COVAR.C = COVAR[CUR.IND]
-							}						
-							
-							if( length(unique(CUR.IND.C0)) > 1 && length(CUR.REF.C0) > 2 && length(unique(RHO[ CUR.IND.C0 ])) > 1 && length(unique(COVAR[CUR.IND.C0])) > 1 ) tst.bbreg.c0 = bbreg.test( CUR.REF.C0 , CUR.ALT.C0 , RHO[ CUR.IND.C0 ] , COVAR.C0 )
-							if( length(unique(CUR.IND.C1)) > 1 && length(CUR.REF.C1) > 2 && length(unique(RHO[ CUR.IND.C1 ])) > 1 && length(unique(COVAR[CUR.IND.C1])) > 1 ) tst.bbreg.c1 = bbreg.test( CUR.REF.C1 , CUR.ALT.C1 , RHO[ CUR.IND.C1 ] , COVAR.C1 )
-							if( !is.na(min(tst.bbreg.c0$pv)) && !is.na(min(tst.bbreg.c1$pv)) ) tst.bbreg = bbreg.test( CUR.REF , CUR.ALT , RHO[ CUR.IND ] , COVAR[CUR.IND] , COVAR.C )
-						  
+							try( { tst.bbreg.c0 = bbreg.test( CUR.REF.C0 , CUR.ALT.C0 , CUR.RHO[ CUR.IND.C0 ] , BBREG.COVAR.C0 ) } , silent = F )
+							try( { tst.bbreg.c1 = bbreg.test( CUR.REF.C1 , CUR.ALT.C1 , CUR.RHO[ CUR.IND.C1 ] , BBREG.COVAR.C1 ) } , silent = F )
+							if( !is.na(min(tst.bbreg.c0$pv)) && !is.na(min(tst.bbreg.c1$pv)) ) {
+								try( { tst.bbreg = bbreg.test( CUR.REF , CUR.ALT , CUR.RHO[ CUR.IND ] , BBREG.COVAR , CUR.PHENO[CUR.IND] ) } , silent = F )
+							}
 							cat( "" , tst.bbreg.c0$pv , tst.bbreg.c1$pv , tst.bbreg$pv , sep='\t' )
 						}
 						
 						if ( DO.TOTAL ) {
 							GEN = GENO.H1[s,] + GENO.H2[s,]
 							TOT.Y = total.mat[ p , ]
-							reg.out = c(NA,NA)
-							try( { reg.out = summary(lm( TOT.Y[CUR.PHENO==0] ~ GEN[CUR.PHENO==0] + COVAR[CUR.PHENO==0] ))$coef[2,c(3,4)] } , silent=T )
-							cat( "" , reg.out , sep='\t' )
+							
+							if ( perm > 0 ) GEN = sample(GEN)
 
+							if ( !is.na(opt$covar) && !is.na(opt$local_param) ) {
+								LM.COVAR = cbind( covar.mat , CUR.CNV )
+							} else if ( !is.na(opt$covar) ) {
+								LM.COVAR = covar.mat
+							} else if ( !is.na(opt$local_param) ) {
+								LM.COVAR = CUR.CNV
+							} else {
+								LM.COVAR = null
+							}
+							
+							if ( !is.null( LM.COVAR ) ) {
+								reg.out = c(NA,NA)
+								try( { reg.out = summary(lm( TOT.Y[CUR.PHENO==0] ~ GEN[CUR.PHENO==0] + LM.COVAR[CUR.PHENO==0] ))$coef[2,c(3,4)] } , silent=T )
+								cat( "" , reg.out , sep='\t' )
 		
-							reg.out = c(NA,NA)
-							try( { reg.out = summary(lm( TOT.Y[CUR.PHENO==1] ~ GEN[CUR.PHENO==1] + COVAR[CUR.PHENO==1] ))$coef[2,c(3,4)] } , silent=T )
-							cat( "" , reg.out , sep='\t' )
+								reg.out = c(NA,NA)
+								try( { reg.out = summary(lm( TOT.Y[CUR.PHENO==1] ~ GEN[CUR.PHENO==1] + LM.COVAR[CUR.PHENO==1] ))$coef[2,c(3,4)] } , silent=T )
+								cat( "" , reg.out , sep='\t' )
 
-							reg.out = c(NA,NA)
-							try( { reg.out = summary(lm( TOT.Y ~ GEN*CUR.PHENO + GEN + CUR.PHENO + COVAR ))$coef[2,c(3,4)] } ,silent=T )							
-							cat( "" , reg.out , sep='\t' )
+								reg.out = c(NA,NA)
+								try( { reg.out = summary(lm( TOT.Y ~ GEN*CUR.PHENO + GEN + CUR.PHENO + LM.COVAR ))$coef[2,c(3,4)] } ,silent=T )							
+								cat( "" , reg.out , sep='\t' )
+							} else {
+								reg.out = c(NA,NA)
+								try( { reg.out = summary(lm( TOT.Y[CUR.PHENO==0] ~ GEN[CUR.PHENO==0] ))$coef[2,c(3,4)] } , silent=T )
+								cat( "" , reg.out , sep='\t' )
+		
+								reg.out = c(NA,NA)
+								try( { reg.out = summary(lm( TOT.Y[CUR.PHENO==1] ~ GEN[CUR.PHENO==1] ))$coef[2,c(3,4)] } , silent=T )
+								cat( "" , reg.out , sep='\t' )
+
+								reg.out = c(NA,NA)
+								try( { reg.out = summary(lm( TOT.Y ~ GEN*CUR.PHENO + GEN + CUR.PHENO ))$coef[2,c(3,4)] } ,silent=T )							
+								cat( "" , reg.out , sep='\t' )
+							}
 						}
 						# --- print individual counts
 						if ( DO.INDIV ) {

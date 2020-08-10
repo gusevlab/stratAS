@@ -112,7 +112,7 @@ if ( !is.na(opt$inp_cnv) ) {
 				
 				phi[ cnv.keep ] = cur.phi
 				mu[ cnv.keep ] = cur.mu
-				num[ cnv.keep ] = sum(overlap)
+				num[ cnv.keep ] = cur.tot
 
 				if( opt$verbose ) cat( ":\tPHI=", cur.phi , ",\tMU=", cur.mu , "\n",sep='',file=stderr() )
 			} else {
@@ -124,11 +124,11 @@ if ( !is.na(opt$inp_cnv) ) {
 		for ( c in 1:nrow(cnv) ) {
 			overlap = vcf$CHR == cnv$CHR[c] & vcf$POS >= cnv$P0[c] & vcf$POS <= cnv$P1[c]
 			if ( sum(overlap) > opt$min_snps ) {
-				fit = vglm(cbind( al.ref[overlap] , al.alt[overlap] ) ~ 1, betabinomialff, trace = FALSE)
-				cof = Coef(fit)
-				phi[c] = 1/(1+sum(cof))
-				mu[c] = cof[1] / sum(cof)
-				num[c] = sum(overlap)
+				try ( { fit = vglm(cbind( al.ref[overlap] , al.alt[overlap] ) ~ 1, betabinomialff, trace = FALSE)
+						cof = Coef(fit)
+						phi[c] = 1/(1+sum(cof))
+						mu[c] = cof[1] / sum(cof)
+						num[c] = sum(overlap) } , silent=T )
 			}
 		}
 	}

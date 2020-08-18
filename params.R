@@ -105,14 +105,14 @@ if ( !is.na(opt$inp_cnv) ) {
 			if( opt$verbose ) cat( ", ",cur.tot," total SNPs",sep='',file=stderr() )
 			
 			if ( cur.tot > opt$min_snps ) {
-				fit = vglm(cbind( cur.al.ref , cur.al.alt ) ~ 1, betabinomialff, trace = FALSE)
-				cof = Coef(fit)
-				cur.phi = 1/(1+sum(cof))
-				cur.mu = cof[1] / sum(cof)
-				
-				phi[ cnv.keep ] = cur.phi
-				mu[ cnv.keep ] = cur.mu
-				num[ cnv.keep ] = cur.tot
+				try ( { fit = vglm(cbind( cur.al.ref , cur.al.alt ) ~ 1, betabinomialff, trace = FALSE)
+					cof = Coef(fit)
+					cur.phi = 1/(1+sum(cof))
+					cur.mu = cof[1] / sum(cof)
+
+					phi[ cnv.keep ] = cur.phi
+					mu[ cnv.keep ] = cur.mu
+					num[ cnv.keep ] = cur.tot } , silent=T )
 
 				if( opt$verbose ) cat( ":\tPHI=", cur.phi , ",\tMU=", cur.mu , "\n",sep='',file=stderr() )
 			} else {

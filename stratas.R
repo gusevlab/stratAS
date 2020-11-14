@@ -305,7 +305,7 @@ phe = read.table( opt$samples , head=T , as.is=T)
 
 cnv.all = read.table( opt$global_param , head=T ,as.is=T)
 if ( !is.na(opt$total_matrix) ) {
-	total.mat = as.matrix( read.table( opt$total_matrix , head=T , check.names=FALSE ) )
+	total.mat = as.matrix( read.table( opt$total_matrix , head=T , check.names=FALSE , row.names=1 ) )
 	DO.TOTAL = TRUE
 }
 if ( !is.na(opt$covar) ) {

@@ -22,6 +22,8 @@ option_list = list(
               help="Skip all testing steps"),
 	make_option("--total_matrix", action="store", default=NA, type='character',
               help="Path to matrix of total activity, enables the linear model. Note: if --local_param is on, then CNV is included as covariate."),
+	make_option("--total_rn", action="store_true", default=FALSE,
+              help="Rank normalize the total expression phenotype."),
 	make_option("--covar", action="store", default=NA, type='character',
               help="Path to covariates for total activity"),
 	make_option("--window", action="store", default=100e3 , type='integer',
@@ -678,8 +680,8 @@ for ( p in 1:nrow(peaks) ) {
 			TOT.Y = total.mat[ p , ]
 			#AS.Y = log( cur.h1.tot / cur.h2.tot )
 			
+			if ( opt$total_rn ) TOT.Y = scale( rank(TOT.Y) / length(TOT.Y) )
 			if ( !is.na(opt$covar) ) {
-				TOT.Y = scale( rank(TOT.Y) / length(TOT.Y) )
 				TOT.Y = resid( lm( TOT.Y ~ covar.mat , na.action="na.exclude" ) )
 				TOT.Y[ !ind.keep ] = NA
 			}
@@ -842,6 +844,7 @@ for ( p in 1:nrow(peaks) ) {
 						if ( DO.TOTAL ) {
 							GEN = GENO.H1[s,] + GENO.H2[s,]
 							TOT.Y = total.mat[ p , ]
+							if ( opt$total_rn ) TOT.Y = scale( rank(TOT.Y) / length(TOT.Y) )
 							
 							if ( perm > 0 ) GEN = sample(GEN)
 

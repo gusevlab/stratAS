@@ -603,7 +603,7 @@ if ( !is.na(opt$update_snps) ) {
 	update_snps.lst = read.table(opt$update_snps,as.is=T)
 	update_snps.lst = update_snps.lst[ match( paste(mat[,1],mat[,2],sep=':') , update_snps.lst[,1] ) , 2 ]
 	update_snps.keep = !is.na(update_snps.lst)
-	snps[update_snps.keep,3] = update_snps.lst[ update_snps.keep ]
+	mat[update_snps.keep,3] = update_snps.lst[ update_snps.keep ]
 }
 
 if ( !is.na(opt$keep) ) {

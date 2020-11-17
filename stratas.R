@@ -16,6 +16,8 @@ option_list = list(
               help="Set of individuals to keep for prediction"),
 	make_option("--predict_snps", action="store", default=NA, type='character',
               help="Set of SNPs to use for prediction"),
+	make_option("--update_snps", action="store", default=NA, type='character',
+              help="Update the SNP identifiers (col1 = chr:pos, col2=updated rsid)"),
 	make_option("--predict", action="store_true", default=FALSE,
               help="Build TWAS/predictive models"),
 	make_option("--predict_only", action="store_true", default=FALSE,
@@ -595,7 +597,14 @@ if ( !is.na(opt$predict_snps) ) {
 	predict_snps[ !is.na( match( paste(mat[,1],mat[,2],sep=':') , predict_snps.lst ) ) ] = T
 } else {
 	predict_snps = rep(T,nrow(mat))
-}	
+}
+
+if ( !is.na(opt$update_snps) ) {
+	update_snps.lst = read.table(opt$update_snps,as.is=T)
+	update_snps.lst = update_snps.lst[ match( paste(mat[,1],mat[,2],sep=':') , update_snps.lst[,1] ) , 2 ]
+	update_snps.keep = !is.na(update_snps.lst)
+	snps[update_snps.keep,3] = update_snps.lst[ update_snps.keep ]
+}
 
 if ( !is.na(opt$keep) ) {
 	ind.keep = rep(F,nrow(phe))

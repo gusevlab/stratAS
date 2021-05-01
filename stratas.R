@@ -42,7 +42,7 @@ option_list = list(
               help="Minimum minor allele frequency for test SNP. [default: %default]"),
 	make_option("--min_het", action="store", default=0.01 , type='double',
               help="Minimum minor heterozygous frequency for test SNP. [default: %default]"),
-	make_option("--min_hetn_pred", action="store", default=10 , type='integer',
+	make_option("--min_n_pred", action="store", default=10 , type='integer',
               help="Minimum heterozygous count for prediction. [default: %default]"),
 	make_option("--max_rho", action="store", default=0.10 , type='double',
               help="Maximum local/global over-dispersion parameter for which to include individual in test. [default: %default]"),

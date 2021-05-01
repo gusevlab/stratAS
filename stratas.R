@@ -42,6 +42,8 @@ option_list = list(
               help="Minimum minor allele frequency for test SNP. [default: %default]"),
 	make_option("--min_het", action="store", default=0.01 , type='double',
               help="Minimum minor heterozygous frequency for test SNP. [default: %default]"),
+	make_option("--min_hetn_pred", action="store", default=10 , type='integer',
+              help="Minimum heterozygous count for prediction. [default: %default]"),
 	make_option("--max_rho", action="store", default=0.10 , type='double',
               help="Maximum local/global over-dispersion parameter for which to include individual in test. [default: %default]"),
 	make_option("--binom", action="store_true", default=FALSE,
@@ -87,6 +89,7 @@ NUM.PERM_COND = opt$perm_cond
 MIN.MAF = opt$min_maf
 MIN.HET = opt$min_het
 MIN.COV = opt$min_cov
+
 MAX.RHO = opt$max_rho
 DO.BINOM = opt$binom
 DO.INDIV = opt$indiv
@@ -222,11 +225,14 @@ if ( opt$predict ) {
 		for ( i in 2:(folds+1) ) {
 			batch = (tot.cut[i-1]+1):tot.cut[i]
 			tot.heldout = tot.ord[ batch ]
-			c.tot = pred.lasso( x = x.tot[-tot.heldout,] , y = y.tot.scaled[-tot.heldout] )
-			tot.pred[ tot.heldout , 1 ] = x.tot[tot.heldout,] %*% c.tot
-			c.tot.top = pred.marginal( x = x.tot.scaled[-tot.heldout,] , y = y.tot.scaled[-tot.heldout] , top=FALSE )
 			
-			if ( sum(hap.keep) >= 10 ) {
+			if ( sum(tot.keep) >= opt$min_n_pred ) {
+				c.tot = pred.lasso( x = x.tot[-tot.heldout,] , y = y.tot.scaled[-tot.heldout] )
+				tot.pred[ tot.heldout , 1 ] = x.tot[tot.heldout,] %*% c.tot
+				c.tot.top = pred.marginal( x = x.tot.scaled[-tot.heldout,] , y = y.tot.scaled[-tot.heldout] , top=FALSE )
+			}
+			
+			if ( sum(hap.keep) >= opt$min_n_pred ) {
 				batch = (hap.cut[i-1]+1):hap.cut[i]
 				hap.heldout = hap.ord[ batch ]
 				
@@ -269,17 +275,25 @@ if ( opt$predict ) {
 			try( { tst = cor.test(tot.pred[,i],y.tot); cv.performance[3,i] = tst$est^2 - 1/sum(tot.keep); cv.performance[4,i] = tst$p.value } , silent=T )
 		}
 
-		# final training
+		# --- final training
 		wgt.matrix = matrix( NA , nrow=ncol(x.tot) , ncol=n.models )
-		wgt.matrix[,1] = pred.lasso( x = x.tot , y = y.tot.scaled )
-		wgt.matrix[,2] = pred.lasso( x = x.hap , y = y.hap , w = sqrt(hap.wgt) )
-		wgt.matrix[,3] = pred.combined( x1 = x.tot.scaled , x2 = x.hap.scaled , y1 = y.tot.scaled , y2 = y.hap.scaled )
-		wgt.matrix[,4] = pred.marginal( x = x.hap.scaled , y = y.hap.scaled , top=FALSE )
-		wgt.matrix[,5] = pred.marginal( x = x.tot.scaled , y = y.tot.scaled , top=FALSE )
-		wgt.matrix[,6] = (wgt.matrix[,4] + wgt.matrix[,5]) / sqrt(2)
-		
 		rownames( wgt.matrix ) = snps[,2]
 		colnames( wgt.matrix ) = models
+		# lasso total
+		wgt.matrix[,1] = pred.lasso( x = x.tot , y = y.tot.scaled )
+		# top1 total
+		wgt.matrix[,5] = pred.marginal( x = x.tot.scaled , y = y.tot.scaled , top=FALSE )
+		# hap models
+		if ( sum(hap.keep) >= opt$min_hetn_pred ) {
+			# lasso hap
+			wgt.matrix[,2] = pred.lasso( x = x.hap , y = y.hap , w = sqrt(hap.wgt) )
+			# lasso combined
+			wgt.matrix[,3] = pred.combined( x1 = x.tot.scaled , x2 = x.hap.scaled , y1 = y.tot.scaled , y2 = y.hap.scaled )
+			# top1 hap
+			wgt.matrix[,4] = pred.marginal( x = x.hap.scaled , y = y.hap.scaled , top=FALSE )
+			# top1 combined
+			wgt.matrix[,6] = (wgt.matrix[,4] + wgt.matrix[,5]) / sqrt(2)
+		}
 
 		N.as = nrow(x.hap)
 		N.qt = nrow(x.tot)
@@ -653,7 +667,7 @@ for ( p in 1:nrow(peaks) ) {
 	}
 	CUR.RHO[ CUR.RHO > MAX.RHO ] = NA
 
-	# collapse reads at this peak
+	# --- collapse reads at this peak
 	cur.h1 = vector()
 	cur.h2 = vector()
 	cur.i = vector()
@@ -661,7 +675,9 @@ for ( p in 1:nrow(peaks) ) {
 	cur.h1.tot = rep(0,N)
 	cur.h2.tot = rep(0,N)
 	
-	for ( i in (1:N)[ ind.keep ] ) {
+	# !is.na(CUR.RHO) : skip this sample if they have been masked out / have no overdispersion estimate
+	for ( i in (1:N)[ ind.keep & !is.na(CUR.RHO) ] ) {
+		
 		reads.keep = GENO.H1[cur,i] != GENO.H2[cur,i] & HAPS[[1]][cur,i] >= MIN.COV & HAPS[[2]][cur,i] >= MIN.COV & HAPS[[1]][cur,i] + HAPS[[2]][cur,i] > 0
 		reads.keep[reads.keep] <- !c(FALSE, diff(mat[cur, 2][reads.keep]) < opt$exclude)
 		cur.h1 = c( cur.h1 , (HAPS[[1]][cur,i])[reads.keep] )
@@ -671,36 +687,54 @@ for ( p in 1:nrow(peaks) ) {
 		cur.h1.tot[i] = sum( (HAPS[[1]][cur,i])[reads.keep] )
 		cur.h2.tot[i] = sum( (HAPS[[2]][cur,i])[reads.keep] )
 	}
-	
-	if ( length(unique(cur.i)) > MIN.MAF*N && sum(cur.h1) + sum(cur.h2) > 0 ) {
-		# test all nearby SNPs
 
-		if( PAR.WIN == -1 ) {
-			cur.snp = mat[,1] == peaks$CHR[p] & mat[,2] >= peaks$P0[p] & mat[,2] <= peaks$P1[p]
+	# --- construct the total activity phenotype and covariates
+	if ( DO.TOTAL || opt$predict ) {
+		TOT.Y = total.mat[ p , ]
+		TOT.Y[ !ind.keep ] = NA
+		
+		# rank normalize the phenotype
+		if ( opt$total_rn ) TOT.Y = scale( rank(TOT.Y) / length(TOT.Y) )
+
+		if ( !is.na(opt$covar) && !is.na(opt$local_param) ) {
+			LM.COVAR = cbind( covar.mat , CUR.CNV )
+		} else if ( !is.na(opt$covar) ) {
+			LM.COVAR = covar.mat
+		} else if ( !is.na(opt$local_param) ) {
+			LM.COVAR = CUR.CNV
 		} else {
-			cur.snp = mat[,1] == peaks$CHR[p] & mat[,2] >= peaks$CENTER[p] - PAR.WIN & mat[,2] <= peaks$CENTER[p] + PAR.WIN
+			LM.COVAR = null
 		}
-		cur.snp = cur.snp & ALL.MAF > MIN.MAF & ALL.MAF < (1-MIN.MAF)
-		
-		if ( opt$predict ) {
-			cur.pred.snp = cur.snp & predict_snps
-			PRED.GEN = t(GENO.H1[cur.pred.snp,] + GENO.H2[cur.pred.snp,])
-			PRED.HAP = t(GENO.H1[cur.pred.snp,] - GENO.H2[cur.pred.snp,])
-			TOT.Y = total.mat[ p , ]
-			#AS.Y = log( cur.h1.tot / cur.h2.tot )
-			
-			if ( opt$total_rn ) TOT.Y = scale( rank(TOT.Y) / length(TOT.Y) )
-			if ( !is.na(opt$covar) ) {
-				TOT.Y = resid( lm( TOT.Y ~ covar.mat , na.action="na.exclude" ) )
-				TOT.Y[ !ind.keep ] = NA
-			}
-			
-			# x.tot = PRED.GEN ; x.hap = PRED.HAP ; y.tot = TOT.Y ; y.h1 = cur.h1.tot ; y.h2 = cur.h2.tot ; output = peaks$NAME[p] ; snps = mat[cur.pred.snp,c(1,3,2,2,4,5)]
-			try( { pred.train( x.tot = PRED.GEN , x.hap = PRED.HAP , y.tot = TOT.Y , y.h1 = cur.h1.tot , y.h2 = cur.h2.tot , output = peaks$NAME[p] , snps = mat[cur.pred.snp,c(1,3,2,2,4,5)] ) } , silent=T )
+	}
+
+	# --- define nearby SNPs
+	if( PAR.WIN == -1 ) {
+		cur.snp = mat[,1] == peaks$CHR[p] & mat[,2] >= peaks$P0[p] & mat[,2] <= peaks$P1[p]
+	} else {
+		cur.snp = mat[,1] == peaks$CHR[p] & mat[,2] >= peaks$CENTER[p] - PAR.WIN & mat[,2] <= peaks$CENTER[p] + PAR.WIN
+	}
+	cur.snp = cur.snp & ALL.MAF > MIN.MAF & ALL.MAF < (1-MIN.MAF)
+	
+	# --- build predictive models
+	if ( opt$predict ) {
+		cur.pred.snp = cur.snp & predict_snps
+		PRED.GEN = t(GENO.H1[cur.pred.snp,] + GENO.H2[cur.pred.snp,])
+		PRED.HAP = t(GENO.H1[cur.pred.snp,] - GENO.H2[cur.pred.snp,])
+		#AS.Y = log( cur.h1.tot / cur.h2.tot )
+
+		if ( !is.null(LM.COVAR) ) {
+			CUR.TOT.Y = resid( lm( TOT.Y ~ LM.COVAR , na.action="na.exclude" ) )
+		} else {
+			CUR.TOT.Y = TOT.Y
 		}
-		
-		if ( opt$predict_only ) next
-		
+
+		# x.tot = PRED.GEN ; x.hap = PRED.HAP ; y.tot = CUR.TOT.Y ; y.h1 = cur.h1.tot ; y.h2 = cur.h2.tot ; output = peaks$NAME[p] ; snps = mat[cur.pred.snp,c(1,3,2,2,4,5)]
+		try( { pred.train( x.tot = PRED.GEN , x.hap = PRED.HAP , y.tot = CUR.TOT.Y , y.h1 = cur.h1.tot , y.h2 = cur.h2.tot , output = peaks$NAME[p] , snps = mat[cur.pred.snp,c(1,3,2,2,4,5)] ) } , silent=T )
+	}
+	if ( opt$predict_only ) next	
+	
+	# --- test each nearby SNP
+	if ( length(unique(cur.i)) > MIN.MAF*N && sum(cur.h1) + sum(cur.h2) > 0 ) {
 		for ( s in which(cur.snp) ) {
 			# restrict to hets
 			HET = GENO.H1[s,] != GENO.H2[s,] & !is.na(CUR.RHO)
@@ -852,20 +886,7 @@ for ( p in 1:nrow(peaks) ) {
 						
 						if ( DO.TOTAL ) {
 							GEN = GENO.H1[s,] + GENO.H2[s,]
-							TOT.Y = total.mat[ p , ]
-							if ( opt$total_rn ) TOT.Y = scale( rank(TOT.Y) / length(TOT.Y) )
-							
 							if ( perm > 0 ) GEN = sample(GEN)
-
-							if ( !is.na(opt$covar) && !is.na(opt$local_param) ) {
-								LM.COVAR = cbind( covar.mat , CUR.CNV )
-							} else if ( !is.na(opt$covar) ) {
-								LM.COVAR = covar.mat
-							} else if ( !is.na(opt$local_param) ) {
-								LM.COVAR = CUR.CNV
-							} else {
-								LM.COVAR = null
-							}
 							
 							if ( !is.null( LM.COVAR ) ) {
 								reg.out = c(NA,NA)

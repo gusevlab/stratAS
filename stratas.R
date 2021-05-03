@@ -705,6 +705,13 @@ for ( p in 1:nrow(peaks) ) {
 		} else {
 			LM.COVAR = null
 		}
+		
+		# test that covariates have variance
+		covar.sds = apply( LM.COVAR,2,sd,na.rm=T )
+		if ( sum(is.na(covar.sds) | covar.sds == 0) > 0 ) {
+			cat( "WARNING: Covariates " , colnames( LM.COVAR ) [ is.na(covar.sds) | covar.sds == 0 ] , "had zero variance for peak",p,", skipping this peak\n" , file = stderr())
+			next
+		}
 	}
 
 	# --- define nearby SNPs
@@ -714,6 +721,7 @@ for ( p in 1:nrow(peaks) ) {
 		cur.snp = mat[,1] == peaks$CHR[p] & mat[,2] >= peaks$CENTER[p] - PAR.WIN & mat[,2] <= peaks$CENTER[p] + PAR.WIN
 	}
 	cur.snp = cur.snp & ALL.MAF > MIN.MAF & ALL.MAF < (1-MIN.MAF)
+	if ( sum(cur.snp) == 0 ) next
 	
 	# --- build predictive models
 	if ( opt$predict ) {
@@ -722,7 +730,7 @@ for ( p in 1:nrow(peaks) ) {
 		PRED.HAP = t(GENO.H1[cur.pred.snp,] - GENO.H2[cur.pred.snp,])
 		#AS.Y = log( cur.h1.tot / cur.h2.tot )
 
-		if ( !is.null(LM.COVAR) ) {
+		if ( !is.null(LM.COVAR) & sum(!is.na(TOT.Y)) > 2 ) {
 			CUR.TOT.Y = resid( lm( TOT.Y ~ LM.COVAR , na.action="na.exclude" ) )
 		} else {
 			CUR.TOT.Y = TOT.Y

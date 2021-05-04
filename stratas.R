@@ -284,7 +284,7 @@ if ( opt$predict ) {
 		# top1 total
 		wgt.matrix[,5] = pred.marginal( x = x.tot.scaled , y = y.tot.scaled , top=FALSE )
 		# hap models
-		if ( sum(hap.keep) >= opt$min_hetn_pred ) {
+		if ( sum(hap.keep) >= opt$min_n_pred ) {
 			# lasso hap
 			wgt.matrix[,2] = pred.lasso( x = x.hap , y = y.hap , w = sqrt(hap.wgt) )
 			# lasso combined
@@ -578,8 +578,8 @@ for ( i in 1:N ) {
 
 # order the total matrix
 if ( DO.TOTAL ) {
-	total.mat = total.mat[ , match( phe$ID , colnames(total.mat)) ]
-	total.mat = total.mat[ match( peaks$NAME , rownames(total.mat)) , ]
+	total.mat = total.mat[ , match( phe$ID , colnames(total.mat)) ,drop=F]
+	total.mat = total.mat[ match( peaks$NAME , rownames(total.mat)) , ,drop=F]
 }
 
 if ( !is.na(opt$covar) ) {

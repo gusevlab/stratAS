@@ -313,8 +313,11 @@ if ( opt$predict ) {
 		try( {hsq.qtl = hereg( x.tot , y.tot )} , silent=TRUE )
 		# ---
 		
-		save( wgt.matrix , snps , cv.performance , hsq, hsq.pv , hsq.as , hsq.qtl ,  N.tot , N.as , N.qt , file = paste( "WEIGHTS/" , output , ".wgt.RDat" , sep='' ) )
-		cat( output , hsq.as , hsq.qtl , c(cv.performance) , '\n' , sep='\t' )
+		# check if any models have non-zero weights
+		if( sum(apply(wgt.matrix!=0,2,sd,na.rm=T)!=0,na.rm=T) > 0 ) {
+			save( wgt.matrix , snps , cv.performance , hsq, hsq.pv , hsq.as , hsq.qtl ,  N.tot , N.as , N.qt , file = paste( "WEIGHTS/" , output , ".wgt.RDat" , sep='' ) )
+			cat( output , hsq.as , hsq.qtl , c(cv.performance) , '\n' , sep='\t' )
+		}
 	}	
 }
 

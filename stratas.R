@@ -230,6 +230,10 @@ if ( opt$predict ) {
 				c.tot = pred.lasso( x = x.tot[-tot.heldout,] , y = y.tot.scaled[-tot.heldout] )
 				tot.pred[ tot.heldout , 1 ] = x.tot[tot.heldout,] %*% c.tot
 				c.tot.top = pred.marginal( x = x.tot.scaled[-tot.heldout,] , y = y.tot.scaled[-tot.heldout] , top=FALSE )
+				
+				c.tot.top.single = c.tot.top
+				c.tot.top.single[ - which.max( c.tot.top^2 ) ] = 0
+				tot.pred[ tot.heldout , 5 ] = x.tot.scaled[tot.heldout,] %*% c.tot.top.single
 			}
 			
 			if ( sum(hap.keep) >= opt$min_n_pred ) {
@@ -259,12 +263,12 @@ if ( opt$predict ) {
 				hap.pred[ hap.heldout , 4 ] = x.hap.scaled[hap.heldout,] %*% c.hap.top
 				
 				hap.pred[ hap.heldout , 6 ] = x.hap.scaled[hap.heldout,] %*% c.combined.top		
-				tot.pred[ tot.heldout , 6 ] = x.tot.scaled[tot.heldout,] %*% c.combined.top	
+				tot.pred[ tot.heldout , 6 ] = x.tot.scaled[tot.heldout,] %*% c.combined.top
+				
+				if ( sum(tot.keep) >= opt$min_n_pred ) {
+					hap.pred[ hap.heldout , 5 ] = x.hap[hap.heldout,] %*% c.tot.top.single
+				}
 			}
-			
-			c.tot.top[ - which.max( c.tot.top^2 ) ] = 0
-			tot.pred[ tot.heldout , 5 ] = x.tot.scaled[tot.heldout,] %*% c.tot.top
-			hap.pred[ hap.heldout , 5 ] = x.hap[hap.heldout,] %*% c.tot.top
 		}
 		
 		cv.performance = matrix( NA , nrow=4 , ncol=n.models )

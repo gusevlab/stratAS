@@ -187,6 +187,7 @@ if ( opt$predict ) {
 	}
 	
 	pred.train = function( x.tot , x.hap , y.tot , y.h1 , y.h2 , output , snps , folds=5 ) {
+		options(warn=-1)
 		
 		hap.wgt = y.h1 + y.h2		
 		y.hap = log( y.h1 / y.h2 )
@@ -329,6 +330,7 @@ if ( opt$predict ) {
 			save( wgt.matrix , snps , cv.performance , hsq, hsq.pv , hsq.as , hsq.qtl ,  N.tot , N.as , N.qt , file = paste( "WEIGHTS/" , output , ".wgt.RDat" , sep='' ) )
 			cat( output , hsq.as , hsq.qtl , c(cv.performance) , '\n' , sep='\t' )
 		}
+		options(warn=0)
 	}	
 }
 

@@ -209,7 +209,7 @@ if ( opt$predict ) {
 		hap.ord = sample(1:nrow(x.hap))
 		hap.cut = floor(seq(0,length(hap.ord),length.out=(folds+1)))
 
-		models = c("lasso","lasso.as","lasso.plasma","top1.as","top1.qtl","top1")
+		models = c("lasso","lasso.as","lasso.combined","top1.as","top1","top1.combined")
 		n.models = length(models)
 						
 		tot.pred = matrix(NA,nrow=nrow(x.tot),ncol=n.models)
@@ -227,10 +227,12 @@ if ( opt$predict ) {
 			tot.heldout = tot.ord[ batch ]
 			
 			if ( sum(tot.keep) >= opt$min_n_pred ) {
+				# lasso
 				c.tot = pred.lasso( x = x.tot[-tot.heldout,] , y = y.tot.scaled[-tot.heldout] )
 				tot.pred[ tot.heldout , 1 ] = x.tot[tot.heldout,] %*% c.tot
 				c.tot.top = pred.marginal( x = x.tot.scaled[-tot.heldout,] , y = y.tot.scaled[-tot.heldout] , top=FALSE )
 				
+				# top1
 				c.tot.top.single = c.tot.top
 				c.tot.top.single[ - which.max( c.tot.top^2 ) ] = 0
 				tot.pred[ tot.heldout , 5 ] = x.tot.scaled[tot.heldout,] %*% c.tot.top.single
@@ -253,16 +255,25 @@ if ( opt$predict ) {
 				c.combined.top[ - which.max( c.combined.top^2 ) ] = 0
 				c.hap.top[ - which.max( c.hap.top^2 ) ] = 0
 				
+				# lasso.as
 				tot.pred[ tot.heldout , 2 ] = (x.tot[tot.heldout,] - 1) %*% c.hap
+				# lasso.combined
 				tot.pred[ tot.heldout , 3 ] = x.tot.scaled[tot.heldout,] %*% c.combined
+				# top1.as
 				tot.pred[ tot.heldout , 4 ] = x.tot.scaled[tot.heldout,] %*% c.hap.top
 
+				# lasso
 				hap.pred[ hap.heldout , 1 ] = x.hap[hap.heldout,] %*% c.tot
+				# lasso.as
 				hap.pred[ hap.heldout , 2 ] = x.hap[hap.heldout,] %*% c.hap
-				hap.pred[ hap.heldout , 3 ] = x.hap.scaled[hap.heldout,] %*% c.combined		
+				# lasso.combined
+				hap.pred[ hap.heldout , 3 ] = x.hap.scaled[hap.heldout,] %*% c.combined	
+				# top1.as
 				hap.pred[ hap.heldout , 4 ] = x.hap.scaled[hap.heldout,] %*% c.hap.top
 				
-				hap.pred[ hap.heldout , 6 ] = x.hap.scaled[hap.heldout,] %*% c.combined.top		
+				# top1.combined
+				hap.pred[ hap.heldout , 6 ] = x.hap.scaled[hap.heldout,] %*% c.combined.top
+				# top1.combined
 				tot.pred[ tot.heldout , 6 ] = x.tot.scaled[tot.heldout,] %*% c.combined.top
 				
 				if ( sum(tot.keep) >= opt$min_n_pred ) {
@@ -283,17 +294,17 @@ if ( opt$predict ) {
 		wgt.matrix = matrix( NA , nrow=ncol(x.tot) , ncol=n.models )
 		rownames( wgt.matrix ) = snps[,2]
 		colnames( wgt.matrix ) = models
-		# lasso total
+		# lasso
 		wgt.matrix[,1] = pred.lasso( x = x.tot , y = y.tot.scaled )
-		# top1 total
+		# top1
 		wgt.matrix[,5] = pred.marginal( x = x.tot.scaled , y = y.tot.scaled , top=FALSE )
 		# hap models
 		if ( sum(hap.keep) >= opt$min_n_pred ) {
-			# lasso hap
+			# lasso as
 			wgt.matrix[,2] = pred.lasso( x = x.hap , y = y.hap , w = sqrt(hap.wgt) )
 			# lasso combined
 			wgt.matrix[,3] = pred.combined( x1 = x.tot.scaled , x2 = x.hap.scaled , y1 = y.tot.scaled , y2 = y.hap.scaled )
-			# top1 hap
+			# top1 as
 			wgt.matrix[,4] = pred.marginal( x = x.hap.scaled , y = y.hap.scaled , top=FALSE )
 			# top1 combined
 			wgt.matrix[,6] = (wgt.matrix[,4] + wgt.matrix[,5]) / sqrt(2)
@@ -314,7 +325,7 @@ if ( opt$predict ) {
 		# ---
 		
 		# check if any models have non-zero weights
-		if( sum(apply(wgt.matrix!=0,2,sd,na.rm=T)!=0,na.rm=T) > 0 ) {
+		if( sum(apply(wgt.matrix!=0,2,sum,na.rm=T)!=0,na.rm=T) > 0 ) {
 			save( wgt.matrix , snps , cv.performance , hsq, hsq.pv , hsq.as , hsq.qtl ,  N.tot , N.as , N.qt , file = paste( "WEIGHTS/" , output , ".wgt.RDat" , sep='' ) )
 			cat( output , hsq.as , hsq.qtl , c(cv.performance) , '\n' , sep='\t' )
 		}

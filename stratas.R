@@ -918,11 +918,11 @@ for ( p in 1:nrow(peaks) ) {
 							
 							if ( !is.null( LM.COVAR ) ) {
 								reg.out = c(NA,NA)
-								try( { reg.out = summary(lm( TOT.Y[CUR.PHENO==0] ~ GEN[CUR.PHENO==0] + LM.COVAR[CUR.PHENO==0] ))$coef[2,c(3,4)] } , silent=T )
+								try( { reg.out = summary(lm( TOT.Y[CUR.PHENO==0] ~ GEN[CUR.PHENO==0] + LM.COVAR[CUR.PHENO==0,] ))$coef[2,c(3,4)] } , silent=T )
 								cat( "" , reg.out , sep='\t' )
 		
 								reg.out = c(NA,NA)
-								try( { reg.out = summary(lm( TOT.Y[CUR.PHENO==1] ~ GEN[CUR.PHENO==1] + LM.COVAR[CUR.PHENO==1] ))$coef[2,c(3,4)] } , silent=T )
+								try( { reg.out = summary(lm( TOT.Y[CUR.PHENO==1] ~ GEN[CUR.PHENO==1] + LM.COVAR[CUR.PHENO==1,] ))$coef[2,c(3,4)] } , silent=T )
 								cat( "" , reg.out , sep='\t' )
 
 								reg.out = c(NA,NA)

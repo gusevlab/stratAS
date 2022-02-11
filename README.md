@@ -88,11 +88,11 @@ Rscript stratas.R \
 --predict --predict_only > $OUT.profile
 ```
 
-This generates predictive model files for every feature in the TWAS/FUSION format, which can then be integrated with GWAS data using the [FUSION](http://gusevlab.org/projects/fusion/) software. **Importantly, for this analysis the CONDITION value is not used and models are trained on all samples**.
+This generates predictive model files for every feature in the TWAS/FUSION format, which can then be integrated with GWAS data using the [FUSION](http://gusevlab.org/projects/fusion/) software. The generated model types inside each model file are `"lasso", "lasso.as", "lasso.combined", "top1.as", "top1", "top1.combined"`; where `lasso` versus `top` corresponds to full locus penalized versus top SNP models; and `*`, `*.as`, `*.combined` indicates models using total activity, allele-specific activity, or both jointly. An `$OUT.profile` file is generated which lists model performance characteristics.
 
-The generated model types inside each model type are `"lasso" "lasso.as","lasso.combined","top1.as","top1","top1.combined"`, where `lasso` versus `top` corresponds to full locus penalized versus top SNP models; and `*`, `*.as`, `*.combined` indicates models using total activity, allele-specific activity, or both jointly. An `$OUT.profile` file is generated which lists model performance characteristics.
+ **Important**: This analysis differs from the individual allele-specific tests in two ways: (1) the CONDITION value is not used and one model is trained on all samples; (2) models are still trained even if no allele-specific informatino is available. To restrict to models with both sources of signal (which are likely to be more accurate as a group), run the allele-specific tests described above and retain only peaks that have non-NA values.
 
-Example total activity input fules based on TCGA data are provided in the `example/` directory.
+Example total activity input files (KIRC.gexp, KIRC.gexp.cov, and HM3.extract) based on TCGA data are provided in the `example/` directory.
 
 ## Output data
 
@@ -117,7 +117,33 @@ By default, the outputs are printed to screen with each line containing the foll
 | C1.BBINOM.P | Beta-binomial test for imbalance in condition 1 |
 | DIFF.BBINOM.P | Beta-binomial test for difference between conditions |
 
-Enabling the `--binom` flag additionally runs a standard binomial test, and produces the following columns:
+Enabling the `--total_matrix` flag additionally runs a standard eQTL test (and interaction term), producing the following columns:
+
+| Column | Description |
+| --- | --- |
+| ALL.TOTAL.Z | Test statisic from linear model across all samples |
+| ALL.TOTAL.P | P-value from linear model across all samples |
+| C0.TOTAL.Z | Test statisic from linear model across condition 0 |
+| C0.TOTAL.P | P-value from linear model across condition 0 |
+| C1.TOTAL.Z | Test statisic from linear model across condition 1 |
+| C1.TOTAL.P | P-value from linear model across condition 1 |
+| DIFF.TOTAL.Z | Test statistic for difference/interaction between conditions |
+| DIFF.TOTAL.P | P-value for difference/interaction between conditions |
+
+Enabling the `--combine` flag additionally estimates the (inverse-variance weighted) combined statistics from the allele-specific and total models, producing the following columns:
+
+| Column | Description |
+| --- | --- |
+| ALL.COMBINE.Z | Test statisic from linear model across all samples |
+| ALL.COMBINE.P | P-value from linear model across all samples |
+| C0.COMBINE.Z | Test statisic from linear model across condition 0 |
+| C0.COMBINE.P | P-value from linear model across condition 0 |
+| C1.COMBINE.Z | Test statisic from linear model across condition 1 |
+| C1.COMBINE.P | P-value from linear model across condition 1 |
+| DIFF.COMBINE.Z | Test statistic for difference between conditions |
+| DIFF.COMBINE.P | P-value for difference between conditions |
+
+Enabling the `--binom` flag additionally runs a standard binomial test (and Fisher's test for interaction), producing the following columns:
 
 | Column | Description |
 | --- | --- |

@@ -28,6 +28,8 @@ option_list = list(
               help="Rank normalize the total expression phenotype."),
 	make_option("--covar", action="store", default=NA, type='character',
               help="Path to covariates for total activity"),
+	make_option("--combine", action="store", default="store_true", type=FALSE,
+              help="Output combined BBINOM and TOTAL statistics by Stouffer's method, must have all relevant flags for basic and total input"),
 	make_option("--window", action="store", default=100e3 , type='integer',
               help="Window (in bp) for SNPs to test around the peak CENTER value. Set to -1 to only test SNPs inside the peak boundary. [default: %default]"),
 	make_option("--perm", action="store", default=0 , type='integer',
@@ -96,6 +98,7 @@ DO.INDIV = opt$indiv
 DO.BBREG = opt$bbreg
 DO.MBASED = opt$mbased
 DO.TOTAL = FALSE
+DO.COMBINE = opt$combine
 
 message("-----------------------------------")
 message("stratAS")
@@ -347,6 +350,11 @@ if ( !is.na(opt$total_matrix) ) {
 if ( !is.na(opt$covar) ) {
 	covar.mat = read.table( opt$covar , head=T , check.names=FALSE , row.names=1 )
 }
+
+if ( DO.COMBINE & !DO.TOTAL ) {
+	stop("ERROR: Cannot have --combine without proper --total_matrix input")
+}
+
 message("Files have been read in")
 
 PERM.PVTHRESH = 0.05 / nrow(mat)
@@ -609,10 +617,11 @@ if ( !is.na(opt$covar) ) {
 options( digits = 4 )
 
 COL.HEADER = c("CHR","POS","RSID","P0","P1","NAME","CENTER","N.HET","N.READS","ALL.AF","ALL.BBINOM.P","C0.AF","C0.BBINOM.P","C1.AF","C1.BBINOM.P","DIFF.BBINOM.P")
-COL.HEADER.BINOM = c("ALL.BINOM.P","ALL.C0.BINOM.P","ALL.C1.BINOM.P","FISHER.OR","FISHER.DIFF.P")
+COL.HEADER.BINOM = c("ALL.BINOM.P","C0.BINOM.P","C1.BINOM.P","FISHER.OR","FISHER.DIFF.P")
 COL.HEADER.INDIV = c("IND.C0","IND.C0.COUNT.REF","IND.C0.COUNT.ALT","IND.C1","IND.C1.COUNT.REF","IND.C1.COUNT.ALT")
 COL.HEADER.BBREG = c("C0.BBREG.P","C0.CNV.BBREG.P","C1.BBREG.P","C1.CNV.BBREG.P","ALL.BBREG.P","DIFF.BBREG.P","DIFF.CNV.BBREG.P")
-COL.HEADER.TOTAL = c("C0.TOTAL.Z","C0.TOTAL.P","C1.TOTAL.Z","C1.TOTAL.P","DIFF.TOTAL.Z","DIFF.TOTAL.P")
+COL.HEADER.TOTAL = c("ALL.TOTAL.Z","ALL.TOTAL.P","C0.TOTAL.Z","C0.TOTAL.P","C1.TOTAL.Z","C1.TOTAL.P","DIFF.TOTAL.Z","DIFF.TOTAL.P")
+COL.HEADER.COMBINE = c("ALL.COMBINE.Z","ALL.COMBINE.P","C0.COMBINE.Z","C0.COMBINE.P","C1.COMBINE.Z","C1.COMBINE.P","DIFF.COMBINE.Z","DIFF.COMBINE.P")
 COL.HEADER.MBASED = c("DIFF.MBASED1.P","DIFF.MBASED1.AF","DIFF.MBASED2.P","DIFF.MBASED2.AF")
 
 HEAD = COL.HEADER
@@ -621,6 +630,7 @@ if ( DO.MBASED ) HEAD = c(HEAD,COL.HEADER.MBASED)
 if ( DO.BBREG ) HEAD = c(HEAD,COL.HEADER.BBREG)
 if ( DO.INDIV ) HEAD = c(HEAD,COL.HEADER.INDIV)
 if ( DO.TOTAL ) HEAD = c(HEAD,COL.HEADER.TOTAL)
+if ( DO.COMBINE ) HEAD = c(HEAD,COL.HEADER.COMBINE)
 
 if ( !is.na(opt$predict_snps) ) {
 	predict_snps = rep(F,nrow(mat))
@@ -764,6 +774,12 @@ for ( p in 1:nrow(peaks) ) {
 	# --- test each nearby SNP
 	if ( length(unique(cur.i)) > MIN.MAF*N && sum(cur.h1) + sum(cur.h2) > 0 ) {
 		for ( s in which(cur.snp) ) {
+			
+			tst.bbinom.C0 = c(NA,NA)
+			tst.bbinom.C1 = c(NA,NA)
+			tst.bbinom.ALL = c(NA,NA)
+			pv.BOTH = c(NA)
+			
 			# restrict to hets
 			HET = GENO.H1[s,] != GENO.H2[s,] & !is.na(CUR.RHO)
 
@@ -861,7 +877,7 @@ for ( p in 1:nrow(peaks) ) {
 						tst.bbinom.C1 = bbinom.test( CUR.REF.C1 , CUR.ALT.C1 , CUR.RHO[CUR.IND.C1] )
 						tst.bbinom.ALL = bbinom.test( CUR.REF , CUR.ALT , CUR.RHO[CUR.IND] )
 						lrt.BOTH = 2 * (tst.bbinom.C0$objective + tst.bbinom.C1$objective - tst.bbinom.ALL$objective)
-						pv.BOTH = pchisq( abs(lrt.BOTH) , df=1 , lower.tail=F )			
+						pv.BOTH = pchisq( abs(lrt.BOTH) , df=1 , lower.tail=F )
 
 						# --- print main output
 						if ( perm > 0 ) cat( "PERM_" , perm , ":" , sep='' )
@@ -917,29 +933,86 @@ for ( p in 1:nrow(peaks) ) {
 							if ( perm > 0 ) GEN = sample(GEN)
 							
 							if ( !is.null( LM.COVAR ) ) {
-								reg.out = c(NA,NA)
-								try( { reg.out = summary(lm( TOT.Y[CUR.PHENO==0] ~ GEN[CUR.PHENO==0] + LM.COVAR[CUR.PHENO==0,] ))$coef[2,c(3,4)] } , silent=T )
-								cat( "" , reg.out , sep='\t' )
+								reg.out.all = c(NA,NA)
+								try( { reg.out.all = summary(lm( TOT.Y ~ GEN + LM.COVAR ))$coef[2,c(3,4)] } , silent=T )
+								cat( "" , reg.out.all , sep='\t' )
+								
+								reg.out.c0 = c(NA,NA)
+								try( { reg.out.c0 = summary(lm( TOT.Y[CUR.PHENO==0] ~ GEN[CUR.PHENO==0] + LM.COVAR[CUR.PHENO==0,] ))$coef[2,c(3,4)] } , silent=T )
+								cat( "" , reg.out.c0 , sep='\t' )
 		
-								reg.out = c(NA,NA)
-								try( { reg.out = summary(lm( TOT.Y[CUR.PHENO==1] ~ GEN[CUR.PHENO==1] + LM.COVAR[CUR.PHENO==1,] ))$coef[2,c(3,4)] } , silent=T )
-								cat( "" , reg.out , sep='\t' )
+								reg.out.c1 = c(NA,NA)
+								try( { reg.out.c1 = summary(lm( TOT.Y[CUR.PHENO==1] ~ GEN[CUR.PHENO==1] + LM.COVAR[CUR.PHENO==1,] ))$coef[2,c(3,4)] } , silent=T )
+								cat( "" , reg.out.c1 , sep='\t' )
 
-								reg.out = c(NA,NA)
-								try( { reg.out = summary(lm( TOT.Y ~ GEN*CUR.PHENO + GEN + CUR.PHENO + LM.COVAR ))$coef[2,c(3,4)] } ,silent=T )							
-								cat( "" , reg.out , sep='\t' )
+								reg.out.d = c(NA,NA)
+								# check if the interaction term has variance
+								if ( !is.na(sd(GEN*CUR.PHENO,na.rm=T)) & sd(GEN*CUR.PHENO,na.rm=T) > 0 ) {
+									try( { reg.out.d = summary(lm( TOT.Y ~ GEN*CUR.PHENO + GEN + CUR.PHENO + LM.COVAR ))$coef[2,c(3,4)] } ,silent=T )
+								}
+								cat( "" , reg.out.d , sep='\t' )
 							} else {
-								reg.out = c(NA,NA)
-								try( { reg.out = summary(lm( TOT.Y[CUR.PHENO==0] ~ GEN[CUR.PHENO==0] ))$coef[2,c(3,4)] } , silent=T )
-								cat( "" , reg.out , sep='\t' )
+								reg.out.all = c(NA,NA)
+								try( { reg.out.all = summary(lm( TOT.Y ~ GEN ))$coef[2,c(3,4)] } , silent=T )
+								cat( "" , reg.out.all , sep='\t' )
+								
+								reg.out.c0 = c(NA,NA)
+								try( { reg.out.c0 = summary(lm( TOT.Y[CUR.PHENO==0] ~ GEN[CUR.PHENO==0] ))$coef[2,c(3,4)] } , silent=T )
+								cat( "" , reg.out.c0 , sep='\t' )
 		
-								reg.out = c(NA,NA)
-								try( { reg.out = summary(lm( TOT.Y[CUR.PHENO==1] ~ GEN[CUR.PHENO==1] ))$coef[2,c(3,4)] } , silent=T )
-								cat( "" , reg.out , sep='\t' )
+								reg.out.c1 = c(NA,NA)
+								try( { reg.out.c1 = summary(lm( TOT.Y[CUR.PHENO==1] ~ GEN[CUR.PHENO==1] ))$coef[2,c(3,4)] } , silent=T )
+								cat( "" , reg.out.c1 , sep='\t' )
 
-								reg.out = c(NA,NA)
-								try( { reg.out = summary(lm( TOT.Y ~ GEN*CUR.PHENO + GEN + CUR.PHENO ))$coef[2,c(3,4)] } ,silent=T )							
-								cat( "" , reg.out , sep='\t' )
+								reg.out.d = c(NA,NA)
+								# check if the interaction term has variance
+								if ( !is.na(sd(GEN*CUR.PHENO,na.rm=T)) & sd(GEN*CUR.PHENO,na.rm=T) > 0 ) {
+									try( { reg.out.d = summary(lm( TOT.Y ~ GEN*CUR.PHENO + GEN + CUR.PHENO ))$coef[2,c(3,4)] } ,silent=T )
+								}
+								cat( "" , reg.out.d , sep='\t' )
+							}
+							
+							# Combine BBINOM and TOTAL tests
+							if ( DO.COMBINE ) {
+								comb.out = c(NA,NA)
+								try ( {
+									bbinom.z = qnorm(tst.bbinom.ALL$pv/2,lower.tail=F)
+									# sign the Z-score based on the AF
+									if ( tst.bbinom.ALL$min < 0.5 ) bbinom.z = -1 * bbinom.z
+									# stouffers method
+									comb.out[1] = (bbinom.z + reg.out.all[1])/sqrt(2)
+									# convert to p-value
+									comb.out[2] = 2*(pnorm( abs(comb.out[1]) , lower.tail=F))
+									},silent=T )
+								cat( "" , comb.out , sep='\t' )
+								
+								comb.out = c(NA,NA)
+								try ( {
+									bbinom.z = qnorm(tst.bbinom.C0$pv/2,lower.tail=F)
+									if ( tst.bbinom.C0$min < 0.5 ) bbinom.z = -1 * bbinom.z
+									comb.out[1] = (bbinom.z + reg.out.c0[1])/sqrt(2)
+									comb.out[2] = 2*(pnorm( abs(comb.out[1]) , lower.tail=F))
+									},silent=T )
+								cat( "" , comb.out , sep='\t' )
+								
+								comb.out = c(NA,NA)
+								try ( {
+									bbinom.z = qnorm(tst.bbinom.C1$pv/2,lower.tail=F)
+									if ( tst.bbinom.C1$min < 0.5 ) bbinom.z = -1 * bbinom.z
+									comb.out[1] = (bbinom.z + reg.out.c1[1])/sqrt(2)
+									comb.out[2] = 2*(pnorm( abs(comb.out[1]) , lower.tail=F))
+									},silent=T )
+								cat( "" , comb.out , sep='\t' )
+
+								comb.out = c(NA,NA)
+								try ( {
+									bbinom.z = qnorm(pv.BOTH/2,lower.tail=F)
+									# sign the z-score based on difference in AFs
+									if ( tst.bbinom.C1$min < tst.bbinom.C0$min ) bbinom.z = -1 * bbinom.z
+									comb.out[1] = (bbinom.z + reg.out.d[1])/sqrt(2)
+									comb.out[2] = 2*(pnorm( abs(comb.out[1]) , lower.tail=F))
+									},silent=T )
+								cat( "" , comb.out , sep='\t' )
 							}
 						}
 						# --- print individual counts

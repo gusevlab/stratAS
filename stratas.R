@@ -28,7 +28,7 @@ option_list = list(
               help="Rank normalize the total expression phenotype."),
 	make_option("--covar", action="store", default=NA, type='character',
               help="Path to covariates for total activity"),
-	make_option("--combine", action="store", default="store_true", type=FALSE,
+	make_option("--combine", action="store_true", default=FALSE,
               help="Output combined BBINOM and TOTAL statistics by Stouffer's method, must have all relevant flags for basic and total input"),
 	make_option("--window", action="store", default=100e3 , type='integer',
               help="Window (in bp) for SNPs to test around the peak CENTER value. Set to -1 to only test SNPs inside the peak boundary. [default: %default]"),

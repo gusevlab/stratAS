@@ -663,7 +663,7 @@ if ( ! opt$predict_only ) {
 	cat('\n')
 }
 
-ALL.MAF = apply( (GENO.H1 + GENO.H2)/2,1,mean)
+ALL.MAF = apply( (GENO.H1 + GENO.H2)[,ind.keep]/2,1,mean)
 
 for ( p in 1:nrow(peaks) ) {
 	cur = mat[,1] == peaks$CHR[p] & mat[,2] >= peaks$P0[p] & mat[,2] <= peaks$P1[p]
@@ -772,7 +772,7 @@ for ( p in 1:nrow(peaks) ) {
 	if ( opt$predict_only ) next	
 	
 	# --- test each nearby SNP
-	if ( length(unique(cur.i)) > MIN.MAF*N && sum(cur.h1) + sum(cur.h2) > 0 ) {
+	if ( sum(cur.h1) + sum(cur.h2) > 0 ) {
 		for ( s in which(cur.snp) ) {
 			
 			tst.bbinom.C0 = c(NA,NA)
@@ -783,7 +783,7 @@ for ( p in 1:nrow(peaks) ) {
 			# restrict to hets
 			HET = GENO.H1[s,] != GENO.H2[s,] & !is.na(CUR.RHO)
 
-			if ( sum(HET) > MIN.HET*N ) {
+			if ( sum(HET) > MIN.HET*sum(ind.keep) ) {
 				# collect REF/ALT heterozygous haplotypes
 				m1 = match( cur.i , which(HET & GENO.H1[s,] == 0) )
 				m2 = match( cur.i , which(HET & GENO.H2[s,] == 0) )
@@ -934,40 +934,40 @@ for ( p in 1:nrow(peaks) ) {
 							
 							if ( !is.null( LM.COVAR ) ) {
 								reg.out.all = c(NA,NA)
-								try( { reg.out.all = summary(lm( TOT.Y ~ GEN + LM.COVAR ))$coef[2,c(3,4)] } , silent=T )
+								try( { reg = summary(lm( TOT.Y ~ GEN + LM.COVAR ))$coef[2,]; reg.out.all = c(reg$coef[1,]/reg$coef[2,],reg$coef[,4]) } , silent=T )
 								cat( "" , reg.out.all , sep='\t' )
 								
 								reg.out.c0 = c(NA,NA)
-								try( { reg.out.c0 = summary(lm( TOT.Y[CUR.PHENO==0] ~ GEN[CUR.PHENO==0] + LM.COVAR[CUR.PHENO==0,] ))$coef[2,c(3,4)] } , silent=T )
+								try( { reg = summary(lm( TOT.Y[CUR.PHENO==0] ~ GEN[CUR.PHENO==0] + LM.COVAR[CUR.PHENO==0,] ))$coef[2,]; reg.out.c0 = c(reg$coef[1,]/reg$coef[2,],reg$coef[,4]) } , silent=T )
 								cat( "" , reg.out.c0 , sep='\t' )
 		
 								reg.out.c1 = c(NA,NA)
-								try( { reg.out.c1 = summary(lm( TOT.Y[CUR.PHENO==1] ~ GEN[CUR.PHENO==1] + LM.COVAR[CUR.PHENO==1,] ))$coef[2,c(3,4)] } , silent=T )
+								try( { reg = summary(lm( TOT.Y[CUR.PHENO==1] ~ GEN[CUR.PHENO==1] + LM.COVAR[CUR.PHENO==1,] ))$coef[2,]; reg.out.c1 = c(reg$coef[1,]/reg$coef[2,],reg$coef[,4]) } , silent=T )
 								cat( "" , reg.out.c1 , sep='\t' )
 
 								reg.out.d = c(NA,NA)
 								# check if the interaction term has variance
 								if ( !is.na(sd(GEN*CUR.PHENO,na.rm=T)) & sd(GEN*CUR.PHENO,na.rm=T) > 0 ) {
-									try( { reg.out.d = summary(lm( TOT.Y ~ GEN*CUR.PHENO + GEN + CUR.PHENO + LM.COVAR ))$coef[2,c(3,4)] } ,silent=T )
+									try( { reg = summary(lm( TOT.Y ~ GEN*CUR.PHENO + GEN + CUR.PHENO + LM.COVAR ))$coef[2,)]; reg.out.d = c(reg$coef[1,]/reg$coef[2,],reg$coef[,4]) } ,silent=T )
 								}
 								cat( "" , reg.out.d , sep='\t' )
 							} else {
 								reg.out.all = c(NA,NA)
-								try( { reg.out.all = summary(lm( TOT.Y ~ GEN ))$coef[2,c(3,4)] } , silent=T )
+								try( { reg = summary(lm( TOT.Y ~ GEN ))$coef[2,]; reg.out.all = c(reg$coef[1,]/reg$coef[2,],reg$coef[,4]) } , silent=T )
 								cat( "" , reg.out.all , sep='\t' )
 								
 								reg.out.c0 = c(NA,NA)
-								try( { reg.out.c0 = summary(lm( TOT.Y[CUR.PHENO==0] ~ GEN[CUR.PHENO==0] ))$coef[2,c(3,4)] } , silent=T )
+								try( { reg = summary(lm( TOT.Y[CUR.PHENO==0] ~ GEN[CUR.PHENO==0] ))$coef[2,]; reg.out.c0 = c(reg$coef[1,]/reg$coef[2,],reg$coef[,4]) } , silent=T )
 								cat( "" , reg.out.c0 , sep='\t' )
 		
 								reg.out.c1 = c(NA,NA)
-								try( { reg.out.c1 = summary(lm( TOT.Y[CUR.PHENO==1] ~ GEN[CUR.PHENO==1] ))$coef[2,c(3,4)] } , silent=T )
+								try( { reg = summary(lm( TOT.Y[CUR.PHENO==1] ~ GEN[CUR.PHENO==1] ))$coef[2,]; reg.out.c1 = c(reg$coef[1,]/reg$coef[2,],reg$coef[,4]) } , silent=T )
 								cat( "" , reg.out.c1 , sep='\t' )
 
 								reg.out.d = c(NA,NA)
 								# check if the interaction term has variance
 								if ( !is.na(sd(GEN*CUR.PHENO,na.rm=T)) & sd(GEN*CUR.PHENO,na.rm=T) > 0 ) {
-									try( { reg.out.d = summary(lm( TOT.Y ~ GEN*CUR.PHENO + GEN + CUR.PHENO ))$coef[2,c(3,4)] } ,silent=T )
+									try( { reg = summary(lm( TOT.Y ~ GEN*CUR.PHENO + GEN + CUR.PHENO ))$coef[2,]; reg.out.d = c(reg$coef[1,]/reg$coef[2,],reg$coef[,4]) } ,silent=T )
 								}
 								cat( "" , reg.out.d , sep='\t' )
 							}

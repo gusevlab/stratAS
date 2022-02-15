@@ -948,7 +948,7 @@ for ( p in 1:nrow(peaks) ) {
 								reg.out.d = c(NA,NA)
 								# check if the interaction term has variance
 								if ( !is.na(sd(GEN*CUR.PHENO,na.rm=T)) & sd(GEN*CUR.PHENO,na.rm=T) > 0 ) {
-									try( { reg = summary(lm( TOT.Y ~ GEN*CUR.PHENO + GEN + CUR.PHENO + LM.COVAR ))$coef[2,)]; reg.out.d = c(reg$coef[1,]/reg$coef[2,],reg$coef[,4]) } ,silent=T )
+									try( { reg = summary(lm( TOT.Y ~ GEN*CUR.PHENO + GEN + CUR.PHENO + LM.COVAR ))$coef[2,]; reg.out.d = c(reg$coef[1,]/reg$coef[2,],reg$coef[,4]) } ,silent=T )
 								}
 								cat( "" , reg.out.d , sep='\t' )
 							} else {

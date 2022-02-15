@@ -934,40 +934,40 @@ for ( p in 1:nrow(peaks) ) {
 							
 							if ( !is.null( LM.COVAR ) ) {
 								reg.out.all = c(NA,NA)
-								try( { reg = summary(lm( TOT.Y ~ GEN + LM.COVAR ))$coef[2,]; reg.out.all = c(reg$coef[1,]/reg$coef[2,],reg$coef[,4]) } , silent=T )
+								try( { reg = summary(lm( TOT.Y ~ GEN + LM.COVAR ))$coef[2,]; reg.out.all = c(reg[1]/reg[2],reg[4]) } , silent=T )
 								cat( "" , reg.out.all , sep='\t' )
 								
 								reg.out.c0 = c(NA,NA)
-								try( { reg = summary(lm( TOT.Y[CUR.PHENO==0] ~ GEN[CUR.PHENO==0] + LM.COVAR[CUR.PHENO==0,] ))$coef[2,]; reg.out.c0 = c(reg$coef[1,]/reg$coef[2,],reg$coef[,4]) } , silent=T )
+								try( { reg = summary(lm( TOT.Y[CUR.PHENO==0] ~ GEN[CUR.PHENO==0] + LM.COVAR[CUR.PHENO==0,] ))$coef[2,]; reg.out.c0 = c(reg[1]/reg[2],reg[4]) } , silent=T )
 								cat( "" , reg.out.c0 , sep='\t' )
 		
 								reg.out.c1 = c(NA,NA)
-								try( { reg = summary(lm( TOT.Y[CUR.PHENO==1] ~ GEN[CUR.PHENO==1] + LM.COVAR[CUR.PHENO==1,] ))$coef[2,]; reg.out.c1 = c(reg$coef[1,]/reg$coef[2,],reg$coef[,4]) } , silent=T )
+								try( { reg = summary(lm( TOT.Y[CUR.PHENO==1] ~ GEN[CUR.PHENO==1] + LM.COVAR[CUR.PHENO==1,] ))$coef[2,]; reg.out.c1 = c(reg[1]/reg[2],reg[4]) } , silent=T )
 								cat( "" , reg.out.c1 , sep='\t' )
 
 								reg.out.d = c(NA,NA)
 								# check if the interaction term has variance
 								if ( !is.na(sd(GEN*CUR.PHENO,na.rm=T)) & sd(GEN*CUR.PHENO,na.rm=T) > 0 ) {
-									try( { reg = summary(lm( TOT.Y ~ GEN*CUR.PHENO + GEN + CUR.PHENO + LM.COVAR ))$coef[2,]; reg.out.d = c(reg$coef[1,]/reg$coef[2,],reg$coef[,4]) } ,silent=T )
+									try( { reg = summary(lm( TOT.Y ~ GEN*CUR.PHENO + GEN + CUR.PHENO + LM.COVAR ))$coef[2,]; reg.out.d = c(reg[1]/reg[2],reg[4]) } ,silent=T )
 								}
 								cat( "" , reg.out.d , sep='\t' )
 							} else {
 								reg.out.all = c(NA,NA)
-								try( { reg = summary(lm( TOT.Y ~ GEN ))$coef[2,]; reg.out.all = c(reg$coef[1,]/reg$coef[2,],reg$coef[,4]) } , silent=T )
+								try( { reg = summary(lm( TOT.Y ~ GEN ))$coef[2,]; reg.out.all = c(reg[1]/reg[2],reg[4]) } , silent=T )
 								cat( "" , reg.out.all , sep='\t' )
 								
 								reg.out.c0 = c(NA,NA)
-								try( { reg = summary(lm( TOT.Y[CUR.PHENO==0] ~ GEN[CUR.PHENO==0] ))$coef[2,]; reg.out.c0 = c(reg$coef[1,]/reg$coef[2,],reg$coef[,4]) } , silent=T )
+								try( { reg = summary(lm( TOT.Y[CUR.PHENO==0] ~ GEN[CUR.PHENO==0] ))$coef[2,]; reg.out.c0 = c(reg[1]/reg[2],reg[4]) } , silent=T )
 								cat( "" , reg.out.c0 , sep='\t' )
 		
 								reg.out.c1 = c(NA,NA)
-								try( { reg = summary(lm( TOT.Y[CUR.PHENO==1] ~ GEN[CUR.PHENO==1] ))$coef[2,]; reg.out.c1 = c(reg$coef[1,]/reg$coef[2,],reg$coef[,4]) } , silent=T )
+								try( { reg = summary(lm( TOT.Y[CUR.PHENO==1] ~ GEN[CUR.PHENO==1] ))$coef[2,]; reg.out.c1 = c(reg[1]/reg[2],reg[4]) } , silent=T )
 								cat( "" , reg.out.c1 , sep='\t' )
 
 								reg.out.d = c(NA,NA)
 								# check if the interaction term has variance
 								if ( !is.na(sd(GEN*CUR.PHENO,na.rm=T)) & sd(GEN*CUR.PHENO,na.rm=T) > 0 ) {
-									try( { reg = summary(lm( TOT.Y ~ GEN*CUR.PHENO + GEN + CUR.PHENO ))$coef[2,]; reg.out.d = c(reg$coef[1,]/reg$coef[2,],reg$coef[,4]) } ,silent=T )
+									try( { reg = summary(lm( TOT.Y ~ GEN*CUR.PHENO + GEN + CUR.PHENO ))$coef[2,]; reg.out.d = c(reg[1]/reg[2],reg[4]) } ,silent=T )
 								}
 								cat( "" , reg.out.d , sep='\t' )
 							}
